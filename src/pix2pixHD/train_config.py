@@ -27,7 +27,7 @@ from torch.utils.data import DataLoader
 
 def create_dir(dir_path):
     if not osp.exists(dir_path):
-        os.mkdir(dir_path)
+        os.makedirs(dir_path)
 
 
 def config():

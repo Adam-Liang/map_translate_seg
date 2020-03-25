@@ -175,8 +175,13 @@ def get_pix2pix_maps_dataset(args, train=True):
 
 
 def get_pix2pix_maps_dataloader(args, train=True):
-    data_set = get_pix2pix_maps_dataset(args, train)
+    #data_set = get_pix2pix_maps_dataset(args, train)
+    #data_set = AlignedDataset(args, train)
+    from src.data.aligned_dataset import AlignedDataset
     if train:
+        args.phase='train'
+        data_set = AlignedDataset()
+        data_set.initialize(args)
         data_loader = DataLoader(dataset=data_set,
                                  batch_size=args.batch_size,
                                  shuffle=True,
@@ -184,10 +189,17 @@ def get_pix2pix_maps_dataloader(args, train=True):
                                  pin_memory=False,
                                  drop_last=True)
     else:
+        import copy
+        args2=copy.deepcopy(args)
+        args2.phase = 'test'
+        #args2.loadSize=args2.fineSize
+        args2.fineSize=args2.loadSize
+        data_set = AlignedDataset()
+        data_set.initialize(args2)
         data_loader = DataLoader(dataset=data_set,
-                                 batch_size=args.test_batch_size,
+                                 batch_size=args2.test_batch_size,
                                  shuffle=False,
-                                 num_workers=args.prefetch,
+                                 num_workers=args2.prefetch,
                                  pin_memory=False,
                                  drop_last=False)
     return data_loader

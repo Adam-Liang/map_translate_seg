@@ -200,7 +200,7 @@ def fid_score(real_path, fake_path, gpu='-1'):
     # parser.add_argument('--gpu', default='', type=str, help='GPU to use (leave blank for CPU only)')
     # args = parser.parse_args()
 
-    if gpu == '-1':
+    if gpu :#== '-1':
         gpu = ''
     # os.environ['CUDA_VISIBLE_DEVICES'] = gpu
     batch_size = 50

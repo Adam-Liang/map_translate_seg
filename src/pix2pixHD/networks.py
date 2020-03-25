@@ -30,7 +30,8 @@ def get_norm_layer(norm_type='instance'):
 
 def get_G(args, input_nc=None):
     if input_nc is None:
-        input_nc = args.label_nc
+        #input_nc = args.label_nc
+        input_nc = args.input_nc
         if args.use_instance:
             input_nc += 1
         if args.feat_num > 0:
@@ -64,7 +65,8 @@ def get_E(args):
 
 def get_D(args, input_nc=None):
     if input_nc is None:
-        input_nc = args.label_nc + args.output_nc
+        #input_nc = args.label_nc + args.output_nc
+        input_nc = args.input_nc + args.output_nc
         if args.use_instance:
             input_nc += 1
 
@@ -99,11 +101,23 @@ class LocalEnhancer(nn.Module):
 
         ###### global generator model #####           
         ngf_global = ngf * (2 ** n_local_enhancers)
-        model_global = GlobalGenerator(input_nc, output_nc, ngf_global, n_downsample_global, n_blocks_global,
-                                       norm_layer).model
-        model_global = [model_global[i] for i in
-                        range(len(model_global) - 3)]  # get rid of final convolution layers
-        self.model = nn.Sequential(*model_global)
+        model_global_1 = GlobalGenerator(input_nc, output_nc, ngf_global, n_downsample_global, n_blocks_global,
+                                       norm_layer).model_1
+        model_global_2 = GlobalGenerator(input_nc, output_nc, ngf_global, n_downsample_global, n_blocks_global,
+                                         norm_layer).model_2
+        model_global_2 = [model_global_2[i] for i in
+                        range(len(model_global_2) - 3)]  # get rid of final convolution layers
+        # self.model = nn.Sequential(*model_global)
+        self.model_1 = nn.Sequential(*model_global_1)
+        self.model_2 = nn.Sequential(*model_global_2)
+        self.pre2= nn.Sequential(nn.Conv2d(ngf_global * 4, ngf_global * 2, kernel_size=1, padding=0),
+                                  norm_layer(ngf_global* 2), nn.ReLU(True))
+        self.mix2 = nn.Sequential(nn.Conv2d(ngf_global * 4, ngf_global * 2, kernel_size=3, padding=1),
+                                  norm_layer(ngf_global* 2), nn.ReLU(True),
+                                  nn.Conv2d(ngf_global * 2, ngf_global * 2, kernel_size=3, padding=1),
+                                  norm_layer(ngf_global * 2), nn.ReLU(True),
+                                  nn.Conv2d(ngf_global * 2, ngf_global * 2, kernel_size=3, padding=1),
+                                  norm_layer(ngf_global* 2), nn.ReLU(True))
 
         ###### local enhancer layers #####
         for n in range(1, n_local_enhancers + 1):
@@ -128,25 +142,44 @@ class LocalEnhancer(nn.Module):
                 model_upsample += [nn.ReflectionPad2d(3), nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0),
                                    nn.Tanh()]
 
-            setattr(self, 'model' + str(n) + '_1', nn.Sequential(*model_downsample))
+            setattr(self, 'model' + str(n) + '_1', nn.Sequential(*model_downsample))#为对象self添加属性
             setattr(self, 'model' + str(n) + '_2', nn.Sequential(*model_upsample))
 
         self.downsample = nn.AvgPool2d(3, stride=2, padding=[1, 1], count_include_pad=False)
 
-    def forward(self, input):
+        self.pre3= nn.Sequential(nn.Conv2d(ngf_global * 8, ngf_global*2, kernel_size=1, padding=0),
+                                  norm_layer(ngf_global* 2), nn.ReLU(True))
+        self.mix3=nn.Sequential(nn.Conv2d(ngf_global*4, ngf_global*2, kernel_size=3, padding=1),
+                                norm_layer(ngf_global*2), nn.ReLU(True),
+                                nn.Conv2d(ngf_global*2, ngf_global*2, kernel_size=3, padding=1),
+                                norm_layer(ngf_global*2), nn.ReLU(True),
+                                nn.Conv2d(ngf_global*2, ngf_global*2, kernel_size=3, padding=1),
+                                norm_layer(ngf_global*2), nn.ReLU(True))
+
+    def forward(self, input,input2=None,input3=None):  #input2: 小尺寸的高层特征   input3:大尺寸的低层特征
         ### create input pyramid
         input_downsampled = [input]
         for i in range(self.n_local_enhancers):
             input_downsampled.append(self.downsample(input_downsampled[-1]))
 
         ### output at coarest level
-        output_prev = self.model(input_downsampled[-1])
+        # output_prev = self.model(input_downsampled[-1])
+        output_prev= self.model_1(input_downsampled[-1])
+        if not (input2 is None):
+            input2=self.pre2(input2)
+            output_prev=self.mix2(torch.cat((output_prev,input2),dim=1))
+        output_prev=self.model_2(output_prev)
         ### build up one layer at a time
         for n_local_enhancers in range(1, self.n_local_enhancers + 1):
             model_downsample = getattr(self, 'model' + str(n_local_enhancers) + '_1')
             model_upsample = getattr(self, 'model' + str(n_local_enhancers) + '_2')
             input_i = input_downsampled[self.n_local_enhancers - n_local_enhancers]
-            output_prev = model_upsample(model_downsample(input_i) + output_prev)
+            tmp=model_downsample(input_i) + output_prev
+            if not (input3 is None):
+                input3=self.pre3(input3)
+                tmp=self.mix3(torch.cat((tmp,input3),dim=1))
+            output_prev = model_upsample(tmp)
+            # output_prev = model_upsample(model_downsample(input_i) + output_prev)
         return output_prev
 
 
@@ -155,7 +188,7 @@ class GlobalGenerator(nn.Module):
                  padding_type='reflect'):
         assert (n_blocks >= 0)
         super(GlobalGenerator, self).__init__()
-        activation = nn.ReLU(True)
+        activation = nn.ReLU(True) #将会改变输入的原数据
 
         model = [nn.ReflectionPad2d(3), nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0), norm_layer(ngf), activation]
         ### downsample
@@ -176,10 +209,22 @@ class GlobalGenerator(nn.Module):
                                          output_padding=1),
                       norm_layer(int(ngf * mult / 2)), activation]
         model += [nn.ReflectionPad2d(3), nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0), nn.Tanh()]
-        self.model = nn.Sequential(*model)
+        self.model_1 = nn.Sequential(*model[:7])
+        self.model_2 = nn.Sequential(*model[7:])
 
-    def forward(self, input):
-        return self.model(input)
+        self.mix2=nn.Sequential(nn.Conv2d(ngf*4, ngf*2, kernel_size=3, padding=1),
+                                norm_layer(ngf*2), nn.ReLU(True),
+                                nn.Conv2d(ngf*2, ngf*2, kernel_size=3, padding=1),
+                                norm_layer(ngf*2), nn.ReLU(True),
+                                nn.Conv2d(ngf*2, ngf*2, kernel_size=3, padding=1),
+                                norm_layer(ngf*2), nn.ReLU(True))
+
+    def forward(self, input ,input2=None):
+        out=self.model_1(input)
+        if input2!=None:
+            out=self.mix2(torch.cat((out,input2),dim=1))
+        out=self.model_2(out)
+        return out
 
     # Define a resnet block
 

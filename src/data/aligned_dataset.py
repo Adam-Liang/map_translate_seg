@@ -36,8 +36,8 @@ class AlignedDataset(BaseDataset):
         self.opt = opt
         self.root = opt.dataroot
         self.dir_AB = os.path.join(opt.dataroot, opt.phase)
-        assert (os.path.isdir(self.dir_AB) or (os.path.isdir(self.dir_AB+'A') and os.path.isdir(self.dir_AB+'B'))),"dataset path not exsit![]"%self.dir_AB
-        if (not os.path.isdir(self.dir_AB)) and os.path.isdir(self.dir_AB+'A') and os.path.isdir(self.dir_AB+'B'):#todo:数据集AB自动合并功能尚不支持英文路径
+        assert (os.path.isdir(self.dir_AB) or (os.path.isdir(self.dir_AB+'A') and os.path.isdir(self.dir_AB+'B'))),"dataset path not exsit! [%s]"%self.dir_AB
+        if (not os.path.isdir(self.dir_AB)) and os.path.isdir(self.dir_AB+'A') and os.path.isdir(self.dir_AB+'B'):#to do:数据集AB自动合并功能尚不支持英文路径
             os.makedirs(self.dir_AB)
             dir_A=self.dir_AB+'A'
             dir_B=self.dir_AB+'B'
@@ -53,6 +53,28 @@ class AlignedDataset(BaseDataset):
                                                (0.5, 0.5, 0.5))]  # mean ,std;  result=(x-mean)/std
 
         self.transform = transforms.Compose(transform_list)  # 串联组合
+
+        #deeplabv3相关
+        self.dir_segs=os.path.join(opt.dataroot, opt.phase+"_seg")
+        from src.util.make_seg_img import labelpixels
+        flag=0
+        if os.path.isdir(self.dir_segs):
+            segs = make_dataset(self.dir_segs)
+            if len(self.AB_paths) == len(segs):
+                flag=1
+            else:
+                import shutil
+                shutil.rmtree(self.dir_segs)
+        if flag==0:
+            os.makedirs(self.dir_segs)
+            for map in self.AB_paths:
+                map_np_AB = np.array(Image.open(map).convert("RGB"))
+                map_np=map_np_AB[:,map_np_AB.shape[1]//2:,:]
+                seg_np = labelpixels(map_np).astype(np.uint8)
+                seg_pil = Image.fromarray(seg_np)
+                seg_path = os.path.join(self.dir_segs, get_inner_path(map, self.dir_AB))
+                seg_pil.save(seg_path)
+        self.seg_paths=sorted(make_dataset(self.dir_segs))
 
     def __getitem__(self, index):
         AB_path = self.AB_paths[index]
@@ -71,13 +93,14 @@ class AlignedDataset(BaseDataset):
         B = AB[:, h_offset:h_offset + self.opt.fineSize,
                w + w_offset:w + w_offset + self.opt.fineSize]
 
-        if self.opt.which_direction == 'BtoA':
+        if False: #self.opt.which_direction == 'BtoA':
             input_nc = self.opt.output_nc
             output_nc = self.opt.input_nc
         else:
             input_nc = self.opt.input_nc
             output_nc = self.opt.output_nc
 
+        self.opt.no_flip=False
         if (not self.opt.no_flip) and random.random() < 0.5:
             idx = [i for i in range(A.size(2) - 1, -1, -1)]
             idx = torch.LongTensor(idx)
@@ -91,8 +114,14 @@ class AlignedDataset(BaseDataset):
         if output_nc == 1:  # RGB to gray
             tmp = B[0, ...] * 0.299 + B[1, ...] * 0.587 + B[2, ...] * 0.114
             B = tmp.unsqueeze(0)
-    
-        return {'A': A, 'B': B,
+
+        # deeplabv3相关
+        seg_path=self.seg_paths[index]
+        seg=Image.open(seg_path)
+        seg=np.asarray(seg)
+        seg=torch.from_numpy(seg)
+
+        return {'A': A, 'B': B,'seg':seg,
                 'A_paths': AB_path, 'B_paths': AB_path}
 
     def __len__(self):

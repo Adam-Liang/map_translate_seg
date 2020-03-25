@@ -27,32 +27,55 @@ from tensorboardX import SummaryWriter
 from src.pix2pixHD.utils import from_std_tensor_save_image, create_dir
 from evaluation.fid.fid_score import fid_score
 
+import torch.nn.functional as F
 
-def eval(args, model, data_loader):
+
+def eval(args, model, data_loader,model_seg=None):
     device = get_device(args)
     data_loader = tqdm(data_loader)
     model.eval()
     model = model.to(device)
+    if not(model_seg is None):
+        model_seg.eval()
+        model_seg=model_seg.to(device)
+        seg_dir=osp.join(args.save, 'seg_result')
     fake_dir = osp.join(args.save, 'fake_result')
     real_dir = osp.join(args.save, 'real_result')
+    A_dir = osp.join(args.save, 'real_source')
     create_dir(real_dir)
     create_dir(fake_dir)
+    create_dir(A_dir)
 
     for i, sample in enumerate(data_loader):
-        imgs = sample['image'].to(device)
-        maps = sample['map'].to(device)
-        im_name = sample['im_name']
+        # imgs = sample['image'].to(device)
+        # maps = sample['map'].to(device)
+        # im_name = sample['im_name']
+        imgs = sample['A'].to(device)
+        maps = sample['B'].to(device)
+        im_name = sample['A_paths']
         with torch.no_grad():
-            fakes = model(imgs)
+            if model_seg is None:
+                fakes = model(imgs)
+            else:
+                outputs, feature_map = model_seg(imgs)
+                input_2 = F.upsample(feature_map, size=(64, 64), mode="bilinear")  # BS*512*64*64
+                input_3 = F.upsample(feature_map, size=(128, 128), mode="bilinear")  # BS*512*128*128
+                fakes = model(imgs, input_2, input_3)
+
 
         batch_size = imgs.size(0)
         for b in range(batch_size):
             file_name = osp.split(im_name[b])[-1].split('.')[0]
             real_file = osp.join(real_dir, f'{file_name}.tif')
             fake_file = osp.join(fake_dir, f'{file_name}.tif')
+            A_file = osp.join(A_dir, f'{file_name}.tif')
+            # if not(model_seg is None):
+            #     seg_file = osp.join(seg_dir, f'{file_name}.tif')
+                # from_std_tensor_save_image(filename=seg_file, data=torch.unsqueeze(outputs[b],0).cpu())
 
             from_std_tensor_save_image(filename=real_file, data=maps[b].cpu())
             from_std_tensor_save_image(filename=fake_file, data=fakes[b].cpu())
+            from_std_tensor_save_image(filename=A_file, data=imgs[b].cpu())
         pass
     pass
     fid = fid_score(real_path=real_dir, fake_path=fake_dir, gpu=str(args.gpu))
