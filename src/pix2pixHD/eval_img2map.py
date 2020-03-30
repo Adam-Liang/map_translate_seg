@@ -39,12 +39,16 @@ def eval(args, model, data_loader,model_seg=None):
         model_seg.eval()
         model_seg=model_seg.to(device)
         seg_dir=osp.join(args.save, 'seg_result')
+        label_preds = []
+        label_targets = []
     fake_dir = osp.join(args.save, 'fake_result')
     real_dir = osp.join(args.save, 'real_result')
     A_dir = osp.join(args.save, 'real_source')
+    seg_dir = osp.join(args.save, 'seg_result')
     create_dir(real_dir)
     create_dir(fake_dir)
     create_dir(A_dir)
+    create_dir(seg_dir)
 
     for i, sample in enumerate(data_loader):
         # imgs = sample['image'].to(device)
@@ -58,17 +62,26 @@ def eval(args, model, data_loader,model_seg=None):
                 fakes = model(imgs)
             else:
                 outputs, feature_map = model_seg(imgs)
-                input_2 = F.upsample(feature_map, size=(64, 64), mode="bilinear")  # BS*512*64*64
-                input_3 = F.upsample(feature_map, size=(128, 128), mode="bilinear")  # BS*512*128*128
+                input_2 = F.upsample(feature_map, size=(64, 64), mode="bilinear")  # BS*256*64*64
+                input_3 = F.upsample(feature_map, size=(128, 128), mode="bilinear")  # BS*256*128*128
                 fakes = model(imgs, input_2, input_3)
-
+                # 以下为计算iou的准备
+                bs,n_class,h,w=outputs.shape
+                outs=outputs.data.cpu().numpy()
+                pred=outs.transpose(0, 2, 3, 1).reshape(-1, n_class).argmax(axis=1).reshape(bs, h, w)
+                target = sample['seg'].cpu().numpy().reshape(bs, h, w)
+                label_preds.append(pred)
+                label_targets.append(target)
 
         batch_size = imgs.size(0)
+        from src.pix2pixHD.myutils import pred2gray
+        outputs=pred2gray(outputs)
         for b in range(batch_size):
             file_name = osp.split(im_name[b])[-1].split('.')[0]
             real_file = osp.join(real_dir, f'{file_name}.tif')
             fake_file = osp.join(fake_dir, f'{file_name}.tif')
             A_file = osp.join(A_dir, f'{file_name}.tif')
+            seg_file = osp.join(seg_dir, f'{file_name}.tif')
             # if not(model_seg is None):
             #     seg_file = osp.join(seg_dir, f'{file_name}.tif')
                 # from_std_tensor_save_image(filename=seg_file, data=torch.unsqueeze(outputs[b],0).cpu())
@@ -76,11 +89,17 @@ def eval(args, model, data_loader,model_seg=None):
             from_std_tensor_save_image(filename=real_file, data=maps[b].cpu())
             from_std_tensor_save_image(filename=fake_file, data=fakes[b].cpu())
             from_std_tensor_save_image(filename=A_file, data=imgs[b].cpu())
+            from_std_tensor_save_image(filename=seg_file, data=outputs[b].cpu())
         pass
     pass
     fid = fid_score(real_path=real_dir, fake_path=fake_dir, gpu=str(args.gpu))
     print(f'===> fid score:{fid:.4f}')
-    return fid
+
+    iou=None
+    if not(model_seg is None):
+        from src.pix2pixHD.eval_iou import label_accuracy_score
+        _,_,iou,_,_=label_accuracy_score(label_targets, label_preds, n_class)
+    return fid,iou
 
 
 def get_fid(args):

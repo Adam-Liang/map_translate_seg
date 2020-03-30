@@ -121,7 +121,7 @@ class AlignedDataset(BaseDataset):
         seg=np.asarray(seg)
         seg=torch.from_numpy(seg)
 
-        return {'A': A, 'B': B,'seg':seg,
+        return {'A': A, 'B': B, 'seg':seg,
                 'A_paths': AB_path, 'B_paths': AB_path}
 
     def __len__(self):

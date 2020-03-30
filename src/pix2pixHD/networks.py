@@ -110,7 +110,7 @@ class LocalEnhancer(nn.Module):
         # self.model = nn.Sequential(*model_global)
         self.model_1 = nn.Sequential(*model_global_1)
         self.model_2 = nn.Sequential(*model_global_2)
-        self.pre2= nn.Sequential(nn.Conv2d(ngf_global * 4, ngf_global * 2, kernel_size=1, padding=0),
+        self.pre2= nn.Sequential(nn.Conv2d(ngf_global * 2, ngf_global * 2, kernel_size=1, padding=0),
                                   norm_layer(ngf_global* 2), nn.ReLU(True))
         self.mix2 = nn.Sequential(nn.Conv2d(ngf_global * 4, ngf_global * 2, kernel_size=3, padding=1),
                                   norm_layer(ngf_global* 2), nn.ReLU(True),
@@ -147,7 +147,7 @@ class LocalEnhancer(nn.Module):
 
         self.downsample = nn.AvgPool2d(3, stride=2, padding=[1, 1], count_include_pad=False)
 
-        self.pre3= nn.Sequential(nn.Conv2d(ngf_global * 8, ngf_global*2, kernel_size=1, padding=0),
+        self.pre3= nn.Sequential(nn.Conv2d(ngf_global * 4, ngf_global*2, kernel_size=1, padding=0),
                                   norm_layer(ngf_global* 2), nn.ReLU(True))
         self.mix3=nn.Sequential(nn.Conv2d(ngf_global*4, ngf_global*2, kernel_size=3, padding=1),
                                 norm_layer(ngf_global*2), nn.ReLU(True),

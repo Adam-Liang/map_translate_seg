@@ -33,6 +33,9 @@ def create_dir(dir_path):
 def config():
     parser = argparse.ArgumentParser(description='Trains GAN on CIFAR',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    # 分割新增参数
+    parser.add_argument('--seg_lr', type=float, default=0.0001, help='The Learning Rate if seg-model.')
+
     # Positional arguments
     parser.add_argument('--cifar_10_data_path', type=str, default='/Users/chenlinwei/dataset/cifar-10-batches-py',
                         help='Root for the Cifar dataset.')

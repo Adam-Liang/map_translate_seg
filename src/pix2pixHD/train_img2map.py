@@ -31,7 +31,9 @@ import shutil
 import numpy as np
 from PIL import Image
 
-from src.pix2pixHD.deeplabv3.model.deeplabv3 import DeepLabV3
+# from src.pix2pixHD.deeplabv3.model.deeplabv3 import DeepLabV3
+from src.pix2pixHD.deeplabv3plus.deeplabv3plus import Configuration
+from src.pix2pixHD.deeplabv3plus.deeplabv3plus.deeplabv3plus_seg import deeplabv3plus
 import torch.nn.functional as F
 
 
@@ -42,7 +44,7 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
 
     model_saver = ModelSaver(save_path=args.save,
                              name_list=['G', 'D', 'E', 'G_optimizer', 'D_optimizer', 'E_optimizer',
-                                        'G_scheduler', 'D_scheduler', 'E_scheduler','DLV3',"DLV3_optimizer"])
+                                        'G_scheduler', 'D_scheduler', 'E_scheduler','DLV3P',"DLV3P_optimizer"])
     visualizer = Visualizer(keys=['image', 'encode_feature', 'fake', 'label', 'instance'])
     sw = SummaryWriter(args.tensorboard_path)
     G = get_G(args)
@@ -50,10 +52,12 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
     model_saver.load('G', G)
     model_saver.load('D', D)
 
-    DLV3=DeepLabV3("1", project_dir=os.path.join(args.save,"deeplabv3"))
+    cfg=Configuration()
+    cfg.MODEL_NUM_CLASSES=5  #todo ?之后要变成5
+    DLV3P=deeplabv3plus(cfg)
     if args.gpu:
-        DLV3=DLV3.cuda()
-    model_saver.load('DLV3', DLV3)
+        DLV3P=DLV3P.cuda()
+    model_saver.load('DLV3P', DLV3P)
 
     # fid = get_fid(args)
     # logger.log(key='FID', data=fid)
@@ -62,13 +66,12 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
 
     G_optimizer = Adam(G.parameters(), lr=args.G_lr, betas=(args.beta1, 0.999))
     D_optimizer = Adam(D.parameters(), lr=args.D_lr, betas=(args.beta1, 0.999))
-    from src.pix2pixHD.deeplabv3.utils.utils import add_weight_decay
-    DLV3_params = add_weight_decay(DLV3, l2_value=0.0001)
-    DLV3_optimizer = torch.optim.Adam(DLV3_params, lr=0.0001)
+
+    DLV3P_optimizer = torch.optim.Adam(DLV3P.parameters(), lr=args.seg_lr,betas=(args.beta1, 0.999))
 
     model_saver.load('G_optimizer', G_optimizer)
     model_saver.load('D_optimizer', D_optimizer)
-    model_saver.load('DLV3_optimizer', DLV3_optimizer)
+    model_saver.load('DLV3P_optimizer', DLV3P_optimizer)
 
     G_scheduler = get_hinge_scheduler(args, G_optimizer)
     D_scheduler = get_hinge_scheduler(args, D_optimizer)
@@ -87,7 +90,7 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
     if args.use_low_level_loss:
         LLLoss = get_low_level_loss(args)
 
-    DLV3_loss=nn.CrossEntropyLoss()
+    DLV3P_loss=nn.CrossEntropyLoss(ignore_index=255)
 
     epoch_now = len(logger.get_data('G_loss'))
     for epoch in range(epoch_now, args.epochs):
@@ -98,21 +101,21 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
         data_loader = tqdm(data_loader)
 
         for step, sample in enumerate(data_loader):
-            # 先训练deeplabv3
+            # 先训练deeplabv3+
             imgs = sample['A'].to(device)  # (shape: (batch_size, 3, img_h, img_w))
             label_imgs = sample['seg'].type(torch.LongTensor).to(device)  # (shape: (batch_size, img_h, img_w))
 
-            outputs,feature_map = DLV3(imgs)  # (shape: (batch_size, num_classes, img_h, img_w))
+            outputs,feature_map = DLV3P(imgs)  # (shape: (batch_size, num_classes, img_h, img_w))
             feature_map=feature_map.detach()
 
             # compute the loss:
-            loss = DLV3_loss(outputs, label_imgs)
-            loss_value = loss.data.cpu().numpy()
+            seg_loss = DLV3P_loss(outputs, label_imgs)
+            seg_loss_value = seg_loss.data.cpu().numpy()
 
             # optimization step:
-            DLV3_optimizer.zero_grad()  # (reset gradients)
-            loss.backward()  # (compute gradients)
-            DLV3_optimizer.step()  # (perform optimization step)
+            DLV3P_optimizer.zero_grad()  # (reset gradients)
+            seg_loss.backward()  # (compute gradients)
+            DLV3P_optimizer.step()  # (perform optimization step)
 
 
             # 然后训练GAN
@@ -122,8 +125,9 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
             # train the Discriminator
             D_optimizer.zero_grad()
             reals_maps = torch.cat([imgs.float(), maps.float()], dim=1)
-            input_2=F.upsample(feature_map, size=(64, 64), mode="bilinear").detach() #BS*512*64*64
-            input_3 = F.upsample(feature_map, size=(128,128), mode="bilinear").detach() #BS*512*128*128
+
+            input_2=F.upsample(feature_map, size=(64, 64), mode="bilinear").detach() #BS*256*64*64
+            input_3 = F.upsample(feature_map, size=(128,128), mode="bilinear").detach() #BS*256*128*128
             fakes = G(imgs,input_2,input_3).detach()
             fakes_maps = torch.cat([imgs.float(), fakes.float()], dim=1)
 
@@ -200,15 +204,22 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
                 sw.add_scalar('Loss/vgg', vgg_loss, total_steps)
                 sw.add_scalar('Loss/df', df_loss, total_steps)
                 sw.add_scalar('Loss/ll', ll_loss, total_steps)
+                sw.add_scalar('Loss/seg', seg_loss_value, total_steps)
 
                 sw.add_scalar('LR/G', get_lr(G_optimizer), total_steps)
                 sw.add_scalar('LR/D', get_lr(D_optimizer), total_steps)
+                sw.add_scalar('LR/seg', get_lr(DLV3P_optimizer), total_steps)
 
                 from util.util import tensor2im
-                a=tensor2im(imgs.data)
-                sw.add_image('img2/realA', a, step,dataformats='HWC')
+                sw.add_image('img2/realA', tensor2im(imgs.data), step,dataformats='HWC')
                 sw.add_image('img2/fakeB', tensor2im(fakes.data), step,dataformats='HWC')
                 sw.add_image('img2/realB', tensor2im(maps.data), step,dataformats='HWC')
+                from src.pix2pixHD.myutils import pred2gray,gray2rgb
+                segmap=pred2gray(outputs)
+                segmap=segmap[0].data.numpy()
+                segmap=gray2rgb(segmap)
+                sw.add_image('img2/segB', segmap, step, dataformats='HWC')
+
                 # sw.add_image('img/realA', imgs[0].cpu(), step)
                 # sw.add_image('img/fakeB', fakes[0].cpu(), step)
                 # sw.add_image('img/realB', maps[0].cpu(), step)
@@ -216,12 +227,14 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
         D_scheduler.step(epoch)
         G_scheduler.step(epoch)
         if epoch % 10 == 0 or epoch == (args.epochs-1):
-            fid = eval(args, model=G, data_loader=get_dataloader_func(args, train=False),model_seg=DLV3)
+            fid,iou = eval(args, model=G, data_loader=get_dataloader_func(args, train=False),model_seg=DLV3P)
             logger.log(key='FID', data=fid)
+            logger.log(key='iou', data=iou)
             if fid > logger.get_max(key='FID'):
                 model_saver.save(f'G_{fid:.4f}', G)
                 model_saver.save(f'D_{fid:.4f}', D)
             sw.add_scalar('fid/fid', fid, epoch)
+            sw.add_scalar('fid/iou', iou, epoch)
 
         logger.log(key='D_loss', data=sum(D_loss_list) / float(len(D_loss_list)))
         logger.log(key='G_loss', data=sum(G_loss_list) / float(len(G_loss_list)))
@@ -230,11 +243,11 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
 
         model_saver.save('G', G)
         model_saver.save('D', D)
-        model_saver.save('DLV3', DLV3)
+        model_saver.save('DLV3P', DLV3P)
 
         model_saver.save('G_optimizer', G_optimizer)
         model_saver.save('D_optimizer', D_optimizer)
-        model_saver.save('DLV3_optimizer', DLV3_optimizer)
+        model_saver.save('DLV3P_optimizer', DLV3P_optimizer)
 
         model_saver.save('G_scheduler', G_scheduler)
         model_saver.save('D_scheduler', D_scheduler)

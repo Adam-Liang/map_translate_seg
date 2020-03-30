@@ -49,14 +49,20 @@ def create_dir(dir_path):
         os.mkdir(dir_path)
 
 
-def from_std_tensor_save_image(filename, data, std=[0.5, 0.5, 0.5], mean=[0.5, 0.5, 0.5]):
+def from_std_tensor_save_image(filename, data, std=[0.5, 0.5, 0.5], mean=[0.5, 0.5, 0.5]): # 三通道为图像预测值，而一通道为已经转换为0-255的图像
 # def from_std_tensor_save_image(filename, data, std=[0.229, 0.224, 0.225], mean=[0.485, 0.456, 0.406]):
-    std = np.array(std).reshape((3, 1, 1))
-    mean = np.array(mean).reshape((3, 1, 1))
-    img = data.clone().numpy()
-    img = ((img * std + mean).transpose(1, 2, 0) * 255.0).clip(0, 255).astype("uint8")
-    img = Image.fromarray(img)
-    img.save(filename)
+    if len(data.shape)==3:
+        std = np.array(std).reshape((3, 1, 1))
+        mean = np.array(mean).reshape((3, 1, 1))
+        img = data.clone().numpy()
+        img = ((img * std + mean).transpose(1, 2, 0) * 255.0).clip(0, 255).astype("uint8")
+        img = Image.fromarray(img)
+        img.save(filename)
+    elif len(data.shape)==2:
+        img=data.clone().numpy()
+        img = img.clip(0, 255).astype("uint8")
+        img = Image.fromarray(img)
+        img.save(filename)
 
 
 def get_encode_features(E: torch.nn.Module, imgs: torch.Tensor, instances: torch.Tensor, labels: torch.Tensor):
