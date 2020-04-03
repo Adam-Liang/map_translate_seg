@@ -34,7 +34,8 @@ def config():
     parser = argparse.ArgumentParser(description='Trains GAN on CIFAR',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     # 分割新增参数
-    parser.add_argument('--seg_lr', type=float, default=0.0001, help='The Learning Rate if seg-model.')
+    parser.add_argument('--seg_lr_global', type=float, default=0.0007, help='The Learning Rate if seg-model.')
+    parser.add_argument('--seg_lr_backbone', type=float, default=0.00007, help='The Learning Rate if seg-model.')
 
     # Positional arguments
     parser.add_argument('--cifar_10_data_path', type=str, default='/Users/chenlinwei/dataset/cifar-10-batches-py',

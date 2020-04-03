@@ -51,7 +51,7 @@ class deeplabv3plus(nn.Module):
             elif isinstance(m, SynchronizedBatchNorm2d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
-        self.backbone = build_backbone(cfg.MODEL_BACKBONE, os=cfg.MODEL_OUTPUT_STRIDE,pretrained=False) # todo 此处本来是pretrained为true
+        self.backbone = build_backbone(cfg.MODEL_BACKBONE, os=cfg.MODEL_OUTPUT_STRIDE) # todo 此处本来是pretrained为true
         self.backbone_layers = self.backbone.get_layers()
 
     def forward(self, x):
@@ -70,6 +70,15 @@ class deeplabv3plus(nn.Module):
         result = self.cls_conv(feature_map)
         result = self.upsample4(result)
         return result,feature_map
+
+    def get_paras(self):
+        backbone_params=self.backbone.parameters()
+        base_params = list(map(id, self.backbone.parameters())) # 注意此处不能使用backbone_params，会导致该迭代器被疯狂使用，后面无法通过正确性检验
+        global_params = filter(lambda p: id(p) not in base_params, self.parameters())
+        # num_bb=sum(1 for _ in backbone_params) # 分割正确性检验
+        # num_gl=sum(1 for _ in global_params)
+        # num_all=sum(1 for _ in self.parameters())
+        return global_params,backbone_params
 
 
 def get_params(model, key):

@@ -65,7 +65,7 @@ class deeplabv3plus(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-        self.backbone = build_backbone(cfg.MODEL_BACKBONE,pretrained=False, os=cfg.MODEL_OUTPUT_STRIDE)# todo:这里本应pretrain
+        self.backbone = build_backbone(cfg.MODEL_BACKBONE, os=cfg.MODEL_OUTPUT_STRIDE)
         self.backbone_layers = self.backbone.get_layers()
         self.init_output()
         self.apply(self.init_bn)

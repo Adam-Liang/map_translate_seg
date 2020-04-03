@@ -41,10 +41,12 @@ import torch.nn.functional as F
 
 def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
     logger = Logger(save_path=args.save, json_name='img2map')
+    epoch_now = len(logger.get_data('G_loss'))
 
     model_saver = ModelSaver(save_path=args.save,
                              name_list=['G', 'D', 'E', 'G_optimizer', 'D_optimizer', 'E_optimizer',
-                                        'G_scheduler', 'D_scheduler', 'E_scheduler','DLV3P',"DLV3P_optimizer"])
+                                        'G_scheduler', 'D_scheduler', 'E_scheduler','DLV3P',"DLV3P_global_optimizer",
+                                        "DLV3P_backbone_optimizer","DLV3P_global_scheduler","DLV3P_backbone_scheduler"])
     visualizer = Visualizer(keys=['image', 'encode_feature', 'fake', 'label', 'instance'])
     sw = SummaryWriter(args.tensorboard_path)
     G = get_G(args)
@@ -53,7 +55,7 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
     model_saver.load('D', D)
 
     cfg=Configuration()
-    cfg.MODEL_NUM_CLASSES=5  #todo ?之后要变成5
+    cfg.MODEL_NUM_CLASSES=5  #todo ?可能之后要变成4
     DLV3P=deeplabv3plus(cfg)
     if args.gpu:
         DLV3P=DLV3P.cuda()
@@ -67,17 +69,24 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
     G_optimizer = Adam(G.parameters(), lr=args.G_lr, betas=(args.beta1, 0.999))
     D_optimizer = Adam(D.parameters(), lr=args.D_lr, betas=(args.beta1, 0.999))
 
-    DLV3P_optimizer = torch.optim.Adam(DLV3P.parameters(), lr=args.seg_lr,betas=(args.beta1, 0.999))
+    seg_global_params, seg_backbone_params=DLV3P.get_paras()
+    DLV3P_global_optimizer = torch.optim.Adam([{'params': seg_global_params, 'initial_lr': args.seg_lr_global}], lr=args.seg_lr_global,betas=(args.beta1, 0.999))
+    DLV3P_backbone_optimizer = torch.optim.Adam([{'params': seg_backbone_params, 'initial_lr': args.seg_lr_backbone}], lr=args.seg_lr_backbone, betas=(args.beta1, 0.999))
 
     model_saver.load('G_optimizer', G_optimizer)
     model_saver.load('D_optimizer', D_optimizer)
-    model_saver.load('DLV3P_optimizer', DLV3P_optimizer)
+    model_saver.load('DLV3P_global_optimizer', DLV3P_global_optimizer)
+    model_saver.load('DLV3P_backbone_optimizer', DLV3P_backbone_optimizer)
 
     G_scheduler = get_hinge_scheduler(args, G_optimizer)
     D_scheduler = get_hinge_scheduler(args, D_optimizer)
+    DLV3P_global_scheduler=torch.optim.lr_scheduler.LambdaLR(DLV3P_global_optimizer, lr_lambda=lambda epoch:(1 - epoch/args.epochs)**0.9,last_epoch=epoch_now)
+    DLV3P_backbone_scheduler = torch.optim.lr_scheduler.LambdaLR(DLV3P_backbone_optimizer,lr_lambda=lambda epoch: (1 - epoch / args.epochs) ** 0.9,last_epoch=epoch_now)
 
     model_saver.load('G_scheduler', G_scheduler)
     model_saver.load('D_scheduler', D_scheduler)
+    model_saver.load('DLV3P_global_scheduler', DLV3P_global_scheduler)
+    model_saver.load('DLV3P_backbone_scheduler', DLV3P_backbone_scheduler)
 
     device = get_device(args)
 
@@ -92,7 +101,6 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
 
     DLV3P_loss=nn.CrossEntropyLoss(ignore_index=255)
 
-    epoch_now = len(logger.get_data('G_loss'))
     for epoch in range(epoch_now, args.epochs):
         G_loss_list = []
         D_loss_list = []
@@ -113,9 +121,11 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
             seg_loss_value = seg_loss.data.cpu().numpy()
 
             # optimization step:
-            DLV3P_optimizer.zero_grad()  # (reset gradients)
+            DLV3P_global_optimizer.zero_grad()  # (reset gradients)
+            DLV3P_backbone_optimizer.zero_grad()
             seg_loss.backward()  # (compute gradients)
-            DLV3P_optimizer.step()  # (perform optimization step)
+            DLV3P_global_optimizer.step()  # (perform optimization step)
+            DLV3P_backbone_optimizer.step()
 
 
             # 然后训练GAN
@@ -208,7 +218,8 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
 
                 sw.add_scalar('LR/G', get_lr(G_optimizer), total_steps)
                 sw.add_scalar('LR/D', get_lr(D_optimizer), total_steps)
-                sw.add_scalar('LR/seg', get_lr(DLV3P_optimizer), total_steps)
+                sw.add_scalar('LR/global_seg', get_lr(DLV3P_global_optimizer), total_steps)
+                sw.add_scalar('LR/backbone_seg', get_lr(DLV3P_backbone_optimizer), total_steps)
 
                 from util.util import tensor2im
                 sw.add_image('img2/realA', tensor2im(imgs.data), step,dataformats='HWC')
@@ -226,6 +237,8 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
 
         D_scheduler.step(epoch)
         G_scheduler.step(epoch)
+        DLV3P_global_scheduler.step()
+        DLV3P_backbone_scheduler.step()
         if epoch % 10 == 0 or epoch == (args.epochs-1):
             fid,iou = eval(args, model=G, data_loader=get_dataloader_func(args, train=False),model_seg=DLV3P)
             logger.log(key='FID', data=fid)
@@ -247,10 +260,13 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
 
         model_saver.save('G_optimizer', G_optimizer)
         model_saver.save('D_optimizer', D_optimizer)
-        model_saver.save('DLV3P_optimizer', DLV3P_optimizer)
+        model_saver.save('DLV3P_global_optimizer', DLV3P_global_optimizer)
+        model_saver.save('DLV3P_backbone_optimizer', DLV3P_backbone_optimizer)
 
         model_saver.save('G_scheduler', G_scheduler)
         model_saver.save('D_scheduler', D_scheduler)
+        model_saver.save('DLV3P_global_scheduler', DLV3P_global_scheduler)
+        model_saver.save('DLV3P_backbone_scheduler', DLV3P_backbone_scheduler)
 
     # （若载入训练完的文件夹,以上训练过程不会被执行，会跳至这一步；若正常训练至这一步，该步不会被执行）
     if epoch_now == args.epochs:

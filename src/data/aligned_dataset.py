@@ -54,7 +54,7 @@ class AlignedDataset(BaseDataset):
 
         self.transform = transforms.Compose(transform_list)  # 串联组合
 
-        #deeplabv3相关
+        #deeplabv3+相关
         self.dir_segs=os.path.join(opt.dataroot, opt.phase+"_seg")
         from src.util.make_seg_img import labelpixels
         flag=0
@@ -120,8 +120,14 @@ class AlignedDataset(BaseDataset):
         seg=Image.open(seg_path)
         seg=np.asarray(seg)
         seg=torch.from_numpy(seg)
+        toseg_transform_list = [transforms.Normalize((0, 0, 0),(2, 2, 2)),  # mean ,std;  result=(x-mean)/std
+                                transforms.Normalize((-0.5,-0.5,-0.5),(0,0,0)),
+                                transforms.Normalize((0.485,0.456,0.406),((0.229,0.224,0.225)))] # 恢复标准化前的数值，并换一组数据标准化
+        toseg_transform = transforms.Compose(toseg_transform_list)
+        A_seg=toseg_transform(A)
+        B_seg=toseg_transform(B)
 
-        return {'A': A, 'B': B, 'seg':seg,
+        return {'A': A, 'B': B, 'seg':seg,'A_seg':A_seg,'B_seg':B_seg,
                 'A_paths': AB_path, 'B_paths': AB_path}
 
     def __len__(self):

@@ -22,7 +22,7 @@ def labelpixels_old_not_use(img3D, label_list=[[239,238,236],[255,242,175],[170,
     ret2D=ret1D.reshape(img3D.shape[:-1])
     return ret2D
 
-def labelpixels(img3D, label_list=[(21,21),(25,25),(103,103),(60,60),(0,0)]):  # 接受参数为ndarray
+def labelpixels(img3D, label_list=[(15,23),(24,26),(101,105),(58,62),(0,0)]):  # 接受参数为ndarray
     img3D = cv2.cvtColor(img3D, cv2.COLOR_RGB2HSV)
     ret2D=np.zeros(img3D.shape[:-1])
     # img3D = cv2.cvtColor(img3D, cv2.COLOR_HSV2BGR)
