@@ -22,13 +22,16 @@ from torch.nn import init
 from src.pix2pixHD.deeplabv3plus.sync_batchnorm import SynchronizedBatchNorm2d
 import os.path as osp
 
+import os
+
 bn_mom = 0.0003
 __all__ = ['xception']
 
 # pre-trained model
 # https://data.lip6.fr/cadene/pretrainedmodels/
 model_urls = {
-    'xception': osp.join(osp.expanduser('~'), '.cache/torch/checkpoints/xception_pytorch_imagenet.pth')
+    'xception': osp.join(os.getcwd(), 'xception_pytorch_imagenet.pth')
+    # 'xception': osp.join(osp.expanduser('~'), '.cache/torch/checkpoints/xception_pytorch_imagenet.pth')
     # 'http://data.lip6.fr/cadene/pretrainedmodels/xception-b5690688.pth'
 }
 
