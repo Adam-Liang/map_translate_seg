@@ -36,7 +36,7 @@ from src.pix2pixHD.deeplabv3plus.deeplabv3plus import Configuration
 from src.pix2pixHD.deeplabv3plus.deeplabv3plus.deeplabv3plus_seg import deeplabv3plus
 import torch.nn.functional as F
 
-
+from src.pix2pixHD.Contextual_Loss_PyTorch.ContextualLoss import Contextual_Loss
 
 
 def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
@@ -100,6 +100,11 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
         LLLoss = get_low_level_loss(args)
 
     DLV3P_loss=nn.CrossEntropyLoss(ignore_index=255)
+
+    layers = {"conv_1_1": 1.0,"conv_3_2": 1.0}
+    Con_Loss=Contextual_Loss(layers, max_1d_size=64)
+    if args.gpu:
+        Con_Loss=Con_Loss.cuda()
 
     for epoch in range(epoch_now, args.epochs):
         G_loss_list = []
@@ -185,6 +190,9 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
                 ll_loss = ll_loss.mean().item()
             else:
                 ll_loss = 0.
+
+            G_context_loss = Con_Loss(fakes,maps).squeeze(0)
+            G_loss += G_context_loss * 1.0 # 待调整比例
 
             G_loss = G_loss.mean()
             G_loss.backward()
