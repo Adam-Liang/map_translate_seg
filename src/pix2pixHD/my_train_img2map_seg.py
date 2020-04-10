@@ -37,6 +37,9 @@ import torch.nn.functional as F
 
 from src.pix2pixHD.deeplabv3plus.lovasz_losses import lovasz_softmax
 
+from util.util import tensor2im  # 注意，该函数使用0.5与255恢复可视图像，所以如果是ImageNet标准化的可能会有色差？这里都显示试一下
+from src.pix2pixHD.myutils import pred2gray, gray2rgb
+
 def eval_iou(args, model, data_loader):
     device = get_device(args)
     data_loader = tqdm(data_loader)
@@ -45,6 +48,15 @@ def eval_iou(args, model, data_loader):
 
     label_preds = []
     label_targets = []
+
+    real_seg_dir = osp.join(args.save, 'real_seg')
+    real_dir = osp.join(args.save, 'real_result')
+    A_dir = osp.join(args.save, 'real_source')
+    seg_dir = osp.join(args.save, 'seg_result')
+    create_dir(real_dir)
+    create_dir(real_seg_dir)
+    create_dir(A_dir)
+    create_dir(seg_dir)
 
     for i, sample in enumerate(data_loader):
         inputs, labels = sample['A_seg'], sample['seg'].squeeze(dim=1)
@@ -59,6 +71,26 @@ def eval_iou(args, model, data_loader):
         target = labels.cpu().numpy().reshape(bs, h, w)
         label_preds.append(pred)
         label_targets.append(target)
+
+        batch_size = inputs.size(0)
+        im_name = sample['A_paths']
+        for b in range(batch_size):
+            file_name = osp.split(im_name[b])[-1].split('.')[0]
+            real_file = osp.join(real_dir, f'{file_name}.tif')
+            real_seg_file = osp.join(real_seg_dir, f'{file_name}.tif')
+            A_file = osp.join(A_dir, f'{file_name}.tif')
+            seg_file = osp.join(seg_dir, f'{file_name}.tif')
+
+            from_std_tensor_save_image(filename=real_file, data=sample['B'][b].cpu())
+            from_std_tensor_save_image(filename=A_file, data=sample['A'][b].cpu())
+            tmpimg= sample['seg'][b].data.cpu().numpy()
+            tmpimg = gray2rgb(tmpimg)
+            tmpimg=Image.fromarray(tmpimg)
+            tmpimg.save(fp=real_seg_file)
+
+            tmpimg = gray2rgb(pred[b])
+            tmpimg = Image.fromarray(tmpimg)
+            tmpimg.save(fp=seg_file)
 
     iou=None
     from src.pix2pixHD.eval_iou import label_accuracy_score
@@ -104,12 +136,20 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
     CE_loss=nn.CrossEntropyLoss(ignore_index=255)
     LVS_loss = lovasz_softmax
 
+    if epoch_now==args.epochs:
+        iou = eval_iou(args, model=DLV3P,data_loader=get_pix2pix_maps_dataloader(args, train=False))
+        logger.log(key='iou', data=iou)
+        if iou < logger.get_max(key='FID'):
+            model_saver.save(f'DLV3P_{iou:.4f}', DLV3P)
+        sw.add_scalar('eval/iou', iou, epoch_now)
+
     for epoch in range(epoch_now, args.epochs):
         CE_loss_list = []
         LVS_loss_list=[]
 
         data_loader = get_dataloader_func(args, train=True)
         data_loader = tqdm(data_loader)
+
 
         for step, sample in enumerate(data_loader):
             # 先训练deeplabv3+
@@ -153,8 +193,7 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
                 sw.add_scalar('LR/global_seg', get_lr(DLV3P_global_optimizer), total_steps)
                 sw.add_scalar('LR/backbone_seg', get_lr(DLV3P_backbone_optimizer), total_steps)
 
-                from util.util import tensor2im # 注意，该函数使用0.5与255恢复可视图像，所以如果是ImageNet标准化的可能会有色差？这里都显示试一下
-                from src.pix2pixHD.myutils import pred2gray, gray2rgb
+
                 sw.add_image('img2/realA', tensor2im(imgs_show.data), total_steps, dataformats='HWC')
                 tmpsegmap = pred2gray(outputs)
                 tmpsegmap = tmpsegmap[0].data.numpy()

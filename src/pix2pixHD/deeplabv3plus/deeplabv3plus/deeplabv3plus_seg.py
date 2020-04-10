@@ -51,7 +51,7 @@ class deeplabv3plus(nn.Module):
             elif isinstance(m, SynchronizedBatchNorm2d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
-        self.backbone = build_backbone(cfg.MODEL_BACKBONE, os=cfg.MODEL_OUTPUT_STRIDE) # todo 此处本来是pretrained为true
+        self.backbone = build_backbone(cfg.MODEL_BACKBONE, os=cfg.MODEL_OUTPUT_STRIDE)
         self.backbone_layers = self.backbone.get_layers()
 
     def forward(self, x):

@@ -49,7 +49,7 @@ def create_dir(dir_path):
         os.mkdir(dir_path)
 
 
-def from_std_tensor_save_image(filename, data, std=[0.5, 0.5, 0.5], mean=[0.5, 0.5, 0.5]): # 三通道为图像预测值，而一通道为已经转换为0-255的图像
+def from_std_tensor_save_image(filename, data, std=[0.5, 0.5, 0.5], mean=[0.5, 0.5, 0.5]): # 三通道为图像预测值(c*h*w)，而一通道为已经转换为0-255的图像
 # def from_std_tensor_save_image(filename, data, std=[0.229, 0.224, 0.225], mean=[0.485, 0.456, 0.406]):
     if len(data.shape)==3:
         std = np.array(std).reshape((3, 1, 1))
