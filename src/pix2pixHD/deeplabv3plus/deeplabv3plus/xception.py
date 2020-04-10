@@ -321,11 +321,9 @@ def xception(pretrained=True, os=16, stride3=False):
         #     if 'pointwise' in name:
         #         old_dict[name] = weights.unsqueeze(-1).unsqueeze(-1)
         model_dict = model.state_dict()
-        # old_dict = {k: v for k, v in old_dict.items() if ('itr' not in k and 'tmp' not in k and 'track' not in k)}
-        old_dict = {k: v for k, v in old_dict.items() if ( k in model_dict)}
-        old_dict['conv3.pointwise.weight']=old_dict['conv3.pointwise.weight'].unsqueeze(2).unsqueeze(3) # 形状不一的修复，下同
-        old_dict['conv4.pointwise.weight'] = old_dict['conv4.pointwise.weight'].unsqueeze(2).unsqueeze(3)
-        old_dict['conv5.pointwise.weight'] = old_dict.pop('conv4.pointwise.weight') # 从参数尺寸上来看，此处的conv4应对应本模型的conv5，具体情况需学习pytorch-xception源码后确认
+        old_dict = {k: v for k, v in old_dict.items() if ('itr' not in k and 'tmp' not in k and 'track' not in k)}
+        # old_dict = {k: v for k, v in old_dict.items() if ( k in model_dict)}
+        # old_dict['conv5.pointwise.weight'] = old_dict.pop('conv4.pointwise.weight')
         model_dict.update(old_dict)
 
         model.load_state_dict(model_dict)

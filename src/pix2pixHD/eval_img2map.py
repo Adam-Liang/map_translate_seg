@@ -99,6 +99,8 @@ def eval(args, model, data_loader,model_seg=None):
     if not(model_seg is None):
         from src.pix2pixHD.eval_iou import label_accuracy_score
         _,_,iou,_,_=label_accuracy_score(label_targets, label_preds, n_class)
+
+    model.train()
     return fid,iou
 
 

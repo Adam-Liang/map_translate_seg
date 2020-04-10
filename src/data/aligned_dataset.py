@@ -93,6 +93,14 @@ class AlignedDataset(BaseDataset):
         B = AB[:, h_offset:h_offset + self.opt.fineSize,
                w + w_offset:w + w_offset + self.opt.fineSize]
 
+        # deeplabv3相关，取label图，之后需将label图与A，B同步处理
+        seg_path = self.seg_paths[index]
+        seg = Image.open(seg_path)
+        seg = np.asarray(seg)
+        seg = torch.from_numpy(seg)  # H W
+        seg = seg[h_offset:h_offset + self.opt.fineSize,
+              w_offset:w_offset + self.opt.fineSize]
+
         if False: #self.opt.which_direction == 'BtoA':
             input_nc = self.opt.output_nc
             output_nc = self.opt.input_nc
@@ -103,9 +111,10 @@ class AlignedDataset(BaseDataset):
         self.opt.no_flip=False
         if (not self.opt.no_flip) and random.random() < 0.5:
             idx = [i for i in range(A.size(2) - 1, -1, -1)]
-            idx = torch.LongTensor(idx)
+            idx = torch.LongTensor(idx)  # 64bit带符号整型，why？因为index_select要求下标为longtensor类型
             A = A.index_select(2, idx)
             B = B.index_select(2, idx)
+            seg=seg.index_select(1,idx)
 
         if input_nc == 1:  # RGB to gray
             tmp = A[0, ...] * 0.299 + A[1, ...] * 0.587 + A[2, ...] * 0.114
@@ -115,13 +124,11 @@ class AlignedDataset(BaseDataset):
             tmp = B[0, ...] * 0.299 + B[1, ...] * 0.587 + B[2, ...] * 0.114
             B = tmp.unsqueeze(0)
 
-        # deeplabv3相关
-        seg_path=self.seg_paths[index]
-        seg=Image.open(seg_path)
-        seg=np.asarray(seg)
-        seg=torch.from_numpy(seg)
+
+
+        # deeplabv3相关-为迎合使用的pretrain模型，需将标准化参数改为ImageNet版本
         toseg_transform_list = [transforms.Normalize((0, 0, 0),(2, 2, 2)),  # mean ,std;  result=(x-mean)/std
-                                transforms.Normalize((-0.5,-0.5,-0.5),(0,0,0)),
+                                transforms.Normalize((-0.5,-0.5,-0.5),(1,1,1)),
                                 transforms.Normalize((0.485,0.456,0.406),((0.229,0.224,0.225)))] # 恢复标准化前的数值，并换一组数据标准化
         toseg_transform = transforms.Compose(toseg_transform_list)
         A_seg=toseg_transform(A)
