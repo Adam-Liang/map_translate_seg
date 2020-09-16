@@ -13,11 +13,11 @@ import os.path
 
 IMG_EXTENSIONS = [
     '.jpg', '.JPG', '.jpeg', '.JPEG',
-    '.png', '.PNG', '.ppm', '.PPM', '.bmp', '.BMP','.tif',
+    '.png', '.PNG', '.ppm', '.PPM', '.bmp', '.BMP','.tif','.npy'
 ]
 
 
-def is_image_file(filename):
+def is_image_file(filename): # npy文件现在也算
     return any(filename.endswith(extension) for extension in IMG_EXTENSIONS)
 
 

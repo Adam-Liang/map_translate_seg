@@ -165,9 +165,9 @@ class LocalEnhancer(nn.Module):
         ### output at coarest level
         # output_prev = self.model(input_downsampled[-1])
         output_prev= self.model_1(input_downsampled[-1])
-        if not (input2 is None):
-            input2=self.pre2(input2)
-            output_prev=self.mix2(torch.cat((output_prev,input2),dim=1))
+        # if not (input2 is None):
+        #     input2=self.pre2(input2)
+        #     output_prev=self.mix2(torch.cat((output_prev,input2),dim=1))
         output_prev=self.model_2(output_prev)
         ### build up one layer at a time
         for n_local_enhancers in range(1, self.n_local_enhancers + 1):
@@ -175,9 +175,9 @@ class LocalEnhancer(nn.Module):
             model_upsample = getattr(self, 'model' + str(n_local_enhancers) + '_2')
             input_i = input_downsampled[self.n_local_enhancers - n_local_enhancers]
             tmp=model_downsample(input_i) + output_prev
-            if not (input3 is None):
-                input3=self.pre3(input3)
-                tmp=self.mix3(torch.cat((tmp,input3),dim=1))
+            # if not (input3 is None):
+            #     input3=self.pre3(input3)
+            #     tmp=self.mix3(torch.cat((tmp,input3),dim=1))
             output_prev = model_upsample(tmp)
             # output_prev = model_upsample(model_downsample(input_i) + output_prev)
         return output_prev

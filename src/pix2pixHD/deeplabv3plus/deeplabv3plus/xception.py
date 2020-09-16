@@ -68,7 +68,7 @@ class Block(nn.Module):
     def __init__(self, in_filters, out_filters, strides=1, atrous=None, grow_first=True, activate_first=True,
                  inplace=True):
         super(Block, self).__init__()
-        if atrous == None:
+        if atrous == None: # atrous,深黑，空洞
             atrous = [1] * 3
         elif isinstance(atrous, int):
             atrous_list = [atrous] * 3
@@ -145,7 +145,7 @@ class Xception(nn.Module):
 
         # middle flow
         rate = 16 // os
-        self.block4 = Block(728, 728, 1, atrous=rate)
+        self.block4 = Block(728, 728, 1, atrous=rate) #atrous 控制卷积核膨胀情况
         self.block5 = Block(728, 728, 1, atrous=rate)
         self.block6 = Block(728, 728, 1, atrous=rate)
         self.block7 = Block(728, 728, 1, atrous=rate)
@@ -189,21 +189,24 @@ class Xception(nn.Module):
                 m.bias.data.zero_()
         # -----------------------------
 
-    def forward(self, input):
+    def forward(self, input): # bs*c*256*256
         self.layers = []
-        x = self.conv1(input)
+        self.ernlayer = [] #为保证向前兼容，使用新的list存储
+        x = self.conv1(input) #bs*32*128*128
         x = self.bn1(x)
         x = self.relu(x)
         # self.layers.append(x)
-        x = self.conv2(x)
+        x = self.conv2(x) #bs*64*128*128
         x = self.bn2(x)
         x = self.relu(x)
+        self.ernlayer.append(x)
 
-        x = self.block1(x)
-        x = self.block2(x)
-        self.layers.append(self.block2.hook_layer)
-        x = self.block3(x)
-        self.layers.append(self.block3.hook_layer)
+        x = self.block1(x) #bs*128*64*64
+        self.ernlayer.append(x)
+        x = self.block2(x) #bs*256*32*32
+        self.layers.append(self.block2.hook_layer) #bs*256*64*64
+        x = self.block3(x)#bs*728*16*16
+        self.layers.append(self.block3.hook_layer) #bs*728*32*32
         x = self.block4(x)
         x = self.block5(x)
         x = self.block6(x)
@@ -240,7 +243,8 @@ class Xception(nn.Module):
 
     def get_layers(self):
         return self.layers
-
+    def get_ern_layers(self):
+        return self.ernlayer
 
 class Xception3strides(Xception):
     """

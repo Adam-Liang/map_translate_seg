@@ -174,10 +174,13 @@ def get_pix2pix_maps_dataset(args, train=True):
     return pix2pix_maps_dataset
 
 
-def get_pix2pix_maps_dataloader(args, train=True):
+def get_pix2pix_maps_dataloader(args, train=True,flag=0):
     #data_set = get_pix2pix_maps_dataset(args, train)
     #data_set = AlignedDataset(args, train)
-    from src.data.aligned_dataset import AlignedDataset
+    if flag==0:
+        from src.data.aligned_dataset import AlignedDataset
+    elif flag==1:
+        from src.data.my_aligned_dataset_theta_wid import AlignedDataset
     if train:
         args.phase='train'
         data_set = AlignedDataset()
@@ -192,6 +195,7 @@ def get_pix2pix_maps_dataloader(args, train=True):
         import copy
         args2=copy.deepcopy(args)
         args2.phase = 'test'
+        args2.no_flip=True
         #args2.loadSize=args2.fineSize
         args2.fineSize=args2.loadSize
         data_set = AlignedDataset()

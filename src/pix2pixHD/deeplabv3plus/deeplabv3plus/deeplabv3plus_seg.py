@@ -56,7 +56,7 @@ class deeplabv3plus(nn.Module):
 
     def forward(self, x):
         x_bottom = self.backbone(x)
-        layers = self.backbone.get_layers()
+        layers = self.backbone.get_layers() #长度为3的list，比较前面的两个结果和最后的一个结果
         # for l in layers:
         #     print(l.shape)
         feature_aspp = self.aspp(layers[-1])
@@ -80,6 +80,86 @@ class deeplabv3plus(nn.Module):
         # num_all=sum(1 for _ in self.parameters())
         return global_params,backbone_params
 
+    def pretrain(self,ptpath):
+        pt_dict = torch.load(ptpath)
+        model_dict = self.state_dict()
+        import collections
+        new_pt_dict=collections.OrderedDict()
+
+        for name,params in pt_dict.items():
+            names = name.split('.')
+            if names[0]=='_aspp':
+                new_name='aspp.'
+                if names[1]=='_branches':
+                    new_name+='branch'
+                    tmpdit={'0.1':'1.0.','0.2':'1.1.','1.0':'2.0.','1.1':'2.1.','2.0':'3.0.','3.0':'4.0.','4.0':'5_'}
+                    new_name+=tmpdit[names[2]+'.'+names[3]]
+                    for i in range(4,len(names)):
+                        new_name+=names[i]
+                        if i <len(names)-1:
+                            new_name+='.'
+                elif names[1]=='_conv_concat':
+                    new_name+='conv_cat.'
+                    new_name+=names[2]
+                    new_name += names[3]
+            elif names[0]=='_feature_extractor':
+                new_name = 'backbone.'
+                if names[2]=='0' or names[2]=='1':
+                    if names[3]=='_batch_norm':
+                        new_name+='bn'
+                    elif names[3]=='_conv':
+                        new_name+='conv'
+                    new_name+=str(int(names[2])+1)
+                    new_name+='.'
+                    new_name+=names[4]
+                elif names[2]=='2': #很多block
+                    if int(names[4])<=19:
+                        new_name+='block'
+                        new_name+=str(int(names[4])+1)
+                        new_name += '.'
+                        if names[5]=='_separable_conv_block':
+                            new_name+='sepconv'
+                            tmp={'1':'1','3':'2','5':'3'}
+                            new_name+=tmp[names[6]]
+                            new_name+='.'
+                            tmp={'_conv_depthwise':'depthwise','_batch_norm_depthwise':'bn1','_conv_pointwise':'pointwise','_batch_norm_pointwise':'bn2'}
+                            new_name+=tmp[names[7]]
+                            new_name+='.'
+                            # if names[8]=='num_batches_tr':
+                            #     names[8]='num_batches_tracked'
+                            new_name+=names[8]
+                        elif names[5]=='_conv_skip_connection' or names[5]=='_batch_norm_shortcut':
+                            tmp={'_conv_skip_connection':'skip','_batch_norm_shortcut':'skipbn'}
+                            new_name+=tmp[names[5]]
+                            new_name+='.'
+                            new_name+=names[6]
+                    elif int(names[4])==20:
+                        new_name+='conv'
+                        new_name+=str(int(names[6])+3)
+                        new_name+='.'
+                        tmp = {'_conv_depthwise':'depthwise','_batch_norm_depthwise':'bn1','_conv_pointwise':'pointwise','_batch_norm_pointwise':'bn2'}
+                        new_name+=tmp[names[7]]
+                        new_name+='.'
+                        new_name+=names[8]
+            elif names[0]=='_refine_decoder':
+                if names[1]=='_decoder':
+                    new_name='shortcut_conv.'
+                    new_name+=names[2]
+                    new_name+='.'
+                    new_name+=names[3]
+                elif names[1]=='_concat_layers':
+                    new_name=name # 该部分结构不匹配，因此不改动名称
+            elif names[0]=='_logits_layer':
+                new_name = name  # 最终预测部分label数不一样，因此不加载
+            new_pt_dict[new_name]=params
+        not_dict = {k: v for k, v in new_pt_dict.items() if (k not in model_dict)}
+        nothave_dict={k: v for k, v in model_dict.items() if (k not in new_pt_dict)}
+        new_pt_dict = {k: v for k, v in new_pt_dict.items() if ( k in model_dict)}
+        new_pt_dict.pop('aspp.branch2.0.weight')
+        model_dict.update(new_pt_dict)
+        self.load_state_dict(model_dict)
+
+        pass
 
 def get_params(model, key):
     print('????')

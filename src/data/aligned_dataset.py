@@ -14,20 +14,39 @@ from tqdm import tqdm
 def make_align_img(dir_A,dir_B,dir_AB):
     print("Align data floder creating!")
     num=0
-    imgs_A=make_dataset(dir_A)
-    imgs_B=make_dataset(dir_B)
-    for img_A in tqdm(imgs_A):
-        img_inner=get_inner_path(img_A,dir_A)
-        if os.path.join(dir_B,img_inner) in imgs_B:
-            photo_A=cv2.imread(img_A)
-            photo_B=cv2.imread(os.path.join(dir_B,img_inner))
-            if photo_A.shape==photo_B.shape:
-                photo_AB=np.concatenate([photo_A, photo_B], 1)
-                img_AB=os.path.join(dir_AB,img_inner)
+    imgs_A=sorted(make_dataset(dir_A))
+    imgs_B=sorted(make_dataset(dir_B))
+    imgs_A_=[]
+    imgs_B_=[]
+    for img_A in imgs_A:
+        imgs_A_.append(os.path.splitext(img_A)[0])
+    for img_B in imgs_B:
+        imgs_B_.append(os.path.splitext(img_B)[0])
+    for i in range(len(imgs_A)):
+        img_A=imgs_A[i]
+        img_inner = get_inner_path(img_A, dir_A)
+        if get_inner_path(imgs_A_[i], dir_A) == get_inner_path(imgs_B_[i],dir_B):
+            photo_A = cv2.imread(img_A)
+            photo_B = cv2.imread(imgs_B[i])
+            if photo_A.shape == photo_B.shape:
+                photo_AB = np.concatenate([photo_A, photo_B], 1)
+                img_AB = os.path.join(dir_AB, os.path.splitext(img_inner)[0]+'.png')
                 if not os.path.isdir(os.path.split(img_AB)[0]):
                     os.makedirs(os.path.split(img_AB)[0])
                 cv2.imwrite(img_AB, photo_AB)
-                num+=1
+                num += 1
+    # for img_A in tqdm(imgs_A):
+    #     img_inner=get_inner_path(img_A,dir_A)
+    #     if os.path.join(dir_B,img_inner) in imgs_B:
+    #         photo_A=cv2.imread(img_A)
+    #         photo_B=cv2.imread(os.path.join(dir_B,img_inner))
+    #         if photo_A.shape==photo_B.shape:
+    #             photo_AB=np.concatenate([photo_A, photo_B], 1)
+    #             img_AB=os.path.join(dir_AB,img_inner)
+    #             if not os.path.isdir(os.path.split(img_AB)[0]):
+    #                 os.makedirs(os.path.split(img_AB)[0])
+    #             cv2.imwrite(img_AB, photo_AB)
+    #             num+=1
     print("Align data floder created! %d img was processed"%num)
 
 
@@ -108,7 +127,7 @@ class AlignedDataset(BaseDataset):
             input_nc = self.opt.input_nc
             output_nc = self.opt.output_nc
 
-        self.opt.no_flip=False
+        # self.opt.no_flip=False
         if (not self.opt.no_flip) and random.random() < 0.5:
             idx = [i for i in range(A.size(2) - 1, -1, -1)]
             idx = torch.LongTensor(idx)  # 64bit带符号整型，why？因为index_select要求下标为longtensor类型

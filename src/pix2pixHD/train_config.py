@@ -33,10 +33,22 @@ def create_dir(dir_path):
 def config():
     parser = argparse.ArgumentParser(description='Trains GAN on CIFAR',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    # 后续试验新增控制参数
+    parser.add_argument('--_0701arg_gradloss_L1_alpha', type=float, default=10, help='gardloss_alpha.')
+    parser.add_argument('--_0701arg_gradloss_struct_alpha', type=float, default=1, help='gardloss_alpha.')
+
+    # 确保复现用
+    parser.add_argument('--seed', type=int, default=0, help='random seed, 0-65535')
     # 分割新增参数
     parser.add_argument('--seg_lr_global', type=float, default=0.0007, help='The Learning Rate if seg-model.')
     parser.add_argument('--seg_lr_backbone', type=float, default=0.00007, help='The Learning Rate if seg-model.')
 
+    parser.add_argument('--no_flip', action='store_true', default=False, help='是否禁止随机翻转处理')
+    parser.add_argument('--batch_size_eval', type=int, default=8, help='eval batch size') # 因为eval有额外内存占用，可设置该值小于训练的bs
+
+    parser.add_argument('--focal_alpha_revise',nargs='*', type=float, default=None, help='revise factor of focal loss alpha')  # 手动为alpha设置乘性系数，默认为使所有label总体权重相同
+    parser.add_argument('--a_loss', nargs='*', type=float, default=None,
+                        help='revise factor of losses')  # 手动所用各个loss设置权重
     # Positional arguments
     parser.add_argument('--cifar_10_data_path', type=str, default='/Users/chenlinwei/dataset/cifar-10-batches-py',
                         help='Root for the Cifar dataset.')
@@ -116,7 +128,7 @@ def config():
     parser.add_argument('--batchSize', type=int, default=1, help='input batch size')
     parser.add_argument('--loadSize', type=int, default=1024, help='scale images to this size')
     parser.add_argument('--fineSize', type=int, default=512, help='then crop to this size')
-    parser.add_argument('--label_nc', type=int, default=35, help='# of input label channels')
+    parser.add_argument('--label_nc', type=int, default=3, help='# of input label channels')
     parser.add_argument('--input_nc', type=int, default=3, help='# of input image channels')
     parser.add_argument('--output_nc', type=int, default=3, help='# of output image channels')
 

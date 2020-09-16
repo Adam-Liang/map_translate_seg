@@ -74,14 +74,16 @@ def eval(args, model, data_loader,model_seg=None):
                 label_targets.append(target)
 
         batch_size = imgs.size(0)
-        from src.pix2pixHD.myutils import pred2gray
-        outputs=pred2gray(outputs)
+        if not (model_seg is None):
+            from src.pix2pixHD.myutils import pred2gray
+            outputs=pred2gray(outputs)
         for b in range(batch_size):
-            file_name = osp.split(im_name[b])[-1].split('.')[0]
+            file_name = osp.split(im_name[b])[0].split(os.sep)[-1]+osp.split(im_name[b])[-1].split('.')[0]
             real_file = osp.join(real_dir, f'{file_name}.tif')
             fake_file = osp.join(fake_dir, f'{file_name}.tif')
             A_file = osp.join(A_dir, f'{file_name}.tif')
-            seg_file = osp.join(seg_dir, f'{file_name}.tif')
+            if not (model_seg is None):
+                seg_file = osp.join(seg_dir, f'{file_name}.tif')
             # if not(model_seg is None):
             #     seg_file = osp.join(seg_dir, f'{file_name}.tif')
                 # from_std_tensor_save_image(filename=seg_file, data=torch.unsqueeze(outputs[b],0).cpu())
@@ -89,7 +91,8 @@ def eval(args, model, data_loader,model_seg=None):
             from_std_tensor_save_image(filename=real_file, data=maps[b].cpu())
             from_std_tensor_save_image(filename=fake_file, data=fakes[b].cpu())
             from_std_tensor_save_image(filename=A_file, data=imgs[b].cpu())
-            from_std_tensor_save_image(filename=seg_file, data=outputs[b].cpu())
+            if not (model_seg is None):
+                from_std_tensor_save_image(filename=seg_file, data=outputs[b].cpu())
         pass
     pass
     fid = fid_score(real_path=real_dir, fake_path=fake_dir, gpu=str(args.gpu))
