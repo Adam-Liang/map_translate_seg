@@ -1,8 +1,15 @@
 import os
 from PIL import Image
+from rgb2gray import make_dataset
+from tqdm import tqdm
 
-old=r'D:\map_translate\写作相关\latex内容\latex内容\配图\素材\131967335_tostand_new\A.tif'
+if __name__=='__main__':
+    
 
-assert os.path.splitext(old)[1]!='.png'
-img=Image.open(old)
-img.save(os.path.splitext(old)[0]+'.png')
+    dir_old=r'D:\map_translate\写作相关\latex内容\参考代码\about_rs\Building-Extraction-master\Building-Extraction-master\data\vaihingen-data-batch\validation\image'
+
+    imgs_old = make_dataset(dir_old)
+    for img in tqdm(imgs_old):
+        assert os.path.splitext(img)[1]!='.png'
+        img_new=Image.open(img)
+        img_new.save(os.path.splitext(img)[0]+'.png')

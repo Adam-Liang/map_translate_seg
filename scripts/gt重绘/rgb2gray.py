@@ -36,6 +36,9 @@ def get_inner_path(file_path, floder_path):
     file_path = file_path[len(floder_path) + 1:]
     return file_path
 
+def make_floder_from_file_path(file_path):
+    if not os.path.isdir(os.path.split(file_path)[0]):
+        os.makedirs(os.path.split(file_path)[0])
 
 def getmask(img3D, rgb):
     img3D = img3D.transpose((2, 0, 1))  # 变为 3 h w 方便后续操作
@@ -65,16 +68,22 @@ def make_change_img(dir_old, dir_new):
         old = np.array(old)
         mask0 = getmask(np.array(old), [239, 238, 236])
         mask1 = getmask(np.array(old), [255, 242, 175])
+        # mask1 = getmask(np.array(old), [255, 255, 255])
         mask2 = getmask(np.array(old), [170, 218, 255])
+        # mask0 = getmask(np.array(old), [128, 0, 0])
+        # mask1 = getmask(np.array(old), [0, 128, 0])
+        # mask2 = getmask(np.array(old), [128, 128, 0])
         # mask3=getmask(np.array(old), [227, 227, 227])
 
         new = 1 * mask0 + 2 * mask1 + 3 * mask2 # + 4*mask3
-        new[new==0]=256
+        assert (new!=0).all()
+        # new[new==0]=256
         new=new-1
 
         # new = 0 * mask0 + 1 * mask1 + 2 * mask2
         new=new.astype(np.uint8)
         new = Image.fromarray(new)
+        make_floder_from_file_path(os.path.join(dir_new, img_inner))
         new.save(os.path.join(dir_new, img_inner))
         num += 1
     print("New data floder created! %d img was processed" % num)
@@ -83,7 +92,7 @@ def make_change_img(dir_old, dir_new):
 if __name__ == "__main__":
     flag = 1
     # 首先解析文件路径
-    path_old = r'D:\map_translate\看看效果\0731\10.0-p2pdata-connect_featuremap\10.0.2\seg_result'
+    path_old = r'D:\map_translate\写作相关\latex内容\latex内容\配图\素材\结构图上的素材\其他\seg_result'
     # path_new = r"D:\map_translate\看看效果\0426TW16_1708图_celvs,epoch200\real_seg_new"
     path_new = path_old + '_gray'
 

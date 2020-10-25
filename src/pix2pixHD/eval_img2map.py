@@ -78,7 +78,7 @@ def eval(args, model, data_loader,model_seg=None):
             from src.pix2pixHD.myutils import pred2gray
             outputs=pred2gray(outputs)
         for b in range(batch_size):
-            file_name = osp.split(im_name[b])[0].split(os.sep)[-1]+osp.split(im_name[b])[-1].split('.')[0]
+            file_name = osp.split(im_name[b])[0].split(os.sep)[-2]+'_'+osp.split(im_name[b])[0].split(os.sep)[-1]+'_'+osp.split(im_name[b])[-1].split('.')[0]
             real_file = osp.join(real_dir, f'{file_name}.tif')
             fake_file = osp.join(fake_dir, f'{file_name}.tif')
             A_file = osp.join(A_dir, f'{file_name}.tif')

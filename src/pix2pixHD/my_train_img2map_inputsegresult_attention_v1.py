@@ -29,7 +29,7 @@ import numpy as np
 from PIL import Image
 
 from src.pix2pixHD.deeplabv3plus.deeplabv3plus import Configuration
-from src.pix2pixHD.deeplabv3plus.deeplabv3plus.my_deeplabv3plus_upsample2conv import deeplabv3plus
+from src.pix2pixHD.deeplabv3plus.deeplabv3plus.my_deeplabv3plus_featuremap import deeplabv3plus
 import torch.nn.functional as F
 
 from src.pix2pixHD.deeplabv3plus.lovasz_losses import lovasz_softmax
@@ -78,14 +78,15 @@ def eval_fidiou(args, model_G,model_seg, data_loader):
         label_preds.append(pred)
         label_targets.append(target)
 
-        seg_ret = pred2gray(outputs).unsqueeze(1).type(torch.FloatTensor).to(device)  # bs*1*h*w
-        imgs_plus=torch.cat((imgs,seg_ret),1)
+        # seg_ret = pred2gray(outputs).unsqueeze(1).type(torch.FloatTensor).to(device)  # bs*1*h*w
+        feature_map = feature_map.detach()
+        imgs_plus=torch.cat((imgs,feature_map),1)
         fakes = model_G(imgs_plus).detach()
 
         batch_size = inputs.size(0)
         im_name = sample['A_paths']
         for b in range(batch_size):
-            file_name = osp.split(im_name[b])[-1].split('.')[0]
+            file_name = osp.split(im_name[b])[0].split(os.sep)[-1]+osp.split(im_name[b])[-1].split('.')[0]
             real_file = osp.join(real_dir, f'{file_name}.tif')
             real_seg_file = osp.join(real_seg_dir, f'{file_name}.tif')
             A_file = osp.join(A_dir, f'{file_name}.tif')
@@ -141,7 +142,7 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
 
     sw = SummaryWriter(args.tensorboard_path)
 
-    G = get_G(args,input_nc=4) # 3+1，带上分割网络的预测值
+    G = get_G(args,input_nc=3+256) # 3+256，256为分割网络输出featuremap的通道数
     D = get_D(args)
     model_saver.load('G', G)
     model_saver.load('D', D)
@@ -205,6 +206,7 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
 
 
     if epoch_now==args.epochs:
+        print('get final models')
         iou = eval_fidiou(args,model_G=G, model_seg=DLV3P,data_loader=get_pix2pix_maps_dataloader(args, train=False))
         logger.log(key='iou', data=iou)
         if iou < logger.get_max(key='FID'):
@@ -247,17 +249,17 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
             seg_loss = (focal_loss+lvs_loss)*0.5
 
             # optimization step:
-            DLV3P_global_optimizer.zero_grad()  # (reset gradients)
-            DLV3P_backbone_optimizer.zero_grad()
-            seg_loss.backward()  # (compute gradients)
-            DLV3P_global_optimizer.step()  # (perform optimization step)
-            DLV3P_backbone_optimizer.step()
+            # DLV3P_global_optimizer.zero_grad()  # (reset gradients)
+            # DLV3P_backbone_optimizer.zero_grad()
+            # seg_loss.backward()  # (compute gradients)
+            # DLV3P_global_optimizer.step()  # (perform optimization step)
+            # DLV3P_backbone_optimizer.step()
 
             # 然后训练GAN
             imgs = sample['A'].to(device)
             maps = sample['B'].to(device)
-            seg_ret = pred2gray(outputs).unsqueeze(1).type(torch.FloatTensor).to(device) #bs*1*h*w
-            imgs_plus=torch.cat((imgs,seg_ret),1) # bs*4*h*w
+            # feature_map=feature_map.detach()
+            imgs_plus=torch.cat((imgs,feature_map),1) # bs*(3+256)*h*w
 
             # train the Discriminator
             D_optimizer.zero_grad()
@@ -279,7 +281,7 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
             D_optimizer.step()
 
             # train generator and encoder
-            G_optimizer.zero_grad()
+            # G_optimizer.zero_grad()
             fakes = G(imgs_plus)
             fakes_maps = torch.cat([imgs.float(), fakes.float()], dim=1)
             D_fake_outs = D(fakes_maps)
@@ -312,10 +314,17 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
                 ll_loss = 0.
 
             G_loss = G_loss.mean()
-            G_loss.backward()
+            G_seg_loss =G_loss+seg_loss
             G_loss = G_loss.item()
+            seg_loss=seg_loss.item()
 
+            G_optimizer.zero_grad()
+            DLV3P_global_optimizer.zero_grad()  # (reset gradients)
+            DLV3P_backbone_optimizer.zero_grad()
+            G_seg_loss.backward()
             G_optimizer.step()
+            DLV3P_global_optimizer.step()  # (perform optimization step)
+            DLV3P_backbone_optimizer.step()
 
             data_loader.write(f'Epochs:{epoch}  | Dloss:{D_loss:.6f} | Gloss:{G_loss:.6f}'
                               f'| GANloss:{gan_loss:.6f} | VGGloss:{vgg_loss:.6f} | DFloss:{df_loss:.6f} '
@@ -332,6 +341,9 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
             # tensorboard log
             if args.tensorboard_log and step % args.tensorboard_log == 0:  # defalut is 5
                 total_steps = epoch * len(data_loader) + step
+                sw.add_scalar('Loss1/G', G_loss, total_steps)
+                sw.add_scalar('Loss1/seg', seg_loss, total_steps)
+                sw.add_scalar('Loss1/G_seg', G_seg_loss, total_steps)
                 sw.add_scalar('Loss/G', G_loss, total_steps)
                 sw.add_scalar('Loss/D', D_loss, total_steps)
                 sw.add_scalar('Loss/gan', gan_loss, total_steps)

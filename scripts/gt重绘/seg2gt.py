@@ -12,9 +12,11 @@ import numpy as np
 # 背景、道路、水域、道路描边
 
 # new_rgb = [[240,240,240],[240,240,175],[170,218,240],[240,210,106]]
-new_rgb = [[239,238,236],[255,255,255],[170,218,255],[227,227,227]]
+# new_rgb = [[239,238,236],[255,255,255],[170,218,255],[227,227,227]]
 
 # new_rgb = [[128,0,0],[0,128,0],[128,128,0],[227,227,227]] # 语义分割上色
+# new_rgb = [[0,0,0],[245,0,80],[0,0,255]] # 语义分割上色
+new_rgb = [[0,0,0],[255,75,135],[70,70,255]] # 语义分割上色
 
 IMG_EXTENSIONS = [
     '.jpg', '.JPG', '.jpeg', '.JPEG',
@@ -87,12 +89,13 @@ def make_rgb_gt(dir_seg, dir_new): # seg 文件为256*256灰度label图
         img_inner = get_inner_path(img, dir_seg)
         old = Image.open(img)
         old=np.array(old)
+        assert (old<3).all()
         new=np.zeros((old.shape[0],old.shape[1],3),dtype=np.uint8)
         new[np.where(old==0)]=new_rgb[0]
         new[np.where(old == 1)] = new_rgb[1]
         new[np.where(old == 2)] = new_rgb[2]
-        road_edge=get_road_edge(old)
-        new[np.where(road_edge == 1)]=new_rgb[3]
+        # road_edge=get_road_edge(old)
+        # new[np.where(road_edge == 1)]=new_rgb[3]
         new=Image.fromarray(new)
         make_floder_from_file_path(os.path.join(dir_new, img_inner))
         new.save(os.path.join(dir_new, img_inner))
@@ -103,9 +106,10 @@ def make_rgb_gt(dir_seg, dir_new): # seg 文件为256*256灰度label图
 if __name__ == "__main__":
     flag = 1
     # 首先解析文件路径
-    path_seg = r"D:\map_translate\202009tw训练\tw数据-多层使用\seg"
+    path_seg = r"D:\map_translate\写作相关\latex内容\latex内容\配图\素材\结构图上的素材\其他\seg_result_gray"
     # path_new = r"D:\map_translate\看看效果\0426TW16_1708图_celvs,epoch200\real_seg_new"
-    path_new = path_seg+'_repaint'
+    path_new = path_seg+'_repaint2'
+    # path_new = os.path.split(path_seg)[0]+os.sep+os.path.split(path_seg)[1][:-4]+'B'
 
     make_rgb_gt(path_seg, path_new)
     print("finish!")

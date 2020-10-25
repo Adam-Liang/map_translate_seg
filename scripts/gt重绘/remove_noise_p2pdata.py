@@ -126,14 +126,29 @@ def make_remove_noise_gt(dir_seg, dir_new): # seg 文件为256*256灰度label图
         old[old==6]=2
         old[old==7]=0
 
-        # #去除噪声
-        # old_mask0=np.array(old==0).astype(np.bool)
-        # old_mask0_=morphology.remove_small_objects(old_mask0,min_size=25)
-        # old_mask1=np.array(old==1).astype(np.bool)
-        # old_mask1_=morphology.remove_small_objects(old_mask1,min_size=25)
-        # old[np.logical_and(old_mask0 ,np.logical_not(old_mask0_))]=1
-        # old[np.logical_and(old_mask1 ,np.logical_not(old_mask1_))]=0
+        #去除噪声
+        old_mask0=np.array(old==0).astype(np.bool)
+        old_mask0_=morphology.remove_small_objects(old_mask0,min_size=25)
+        old_mask1=np.array(old==1).astype(np.bool)
+        old_mask1_=morphology.remove_small_objects(old_mask1,min_size=25)
+        old[np.logical_and(old_mask0 ,np.logical_not(old_mask0_))]=1
+        old[np.logical_and(old_mask1 ,np.logical_not(old_mask1_))]=0
 
+        # 闭操作尝试去除箭头
+        # old_mask1=np.array(old==1).astype(np.bool)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        old_mask1_cv2=255*old_mask1.astype(np.uint8)
+        old_mask1_tmp = cv2.morphologyEx(old_mask1_cv2, cv2.MORPH_CLOSE, kernel, iterations=1)
+        old[old_mask1_tmp==255] = 1
+
+        old_mask0 = np.array(old == 0).astype(np.bool)
+        old_mask0_ = morphology.remove_small_objects(old_mask0, min_size=25)
+        old_mask1 = np.array(old == 1).astype(np.bool)
+        old_mask1_ = morphology.remove_small_objects(old_mask1, min_size=25)
+        old[np.logical_and(old_mask0, np.logical_not(old_mask0_))] = 1
+        old[np.logical_and(old_mask1, np.logical_not(old_mask1_))] = 0
+
+        # old[np.logical_and(old_mask1, np.logical_not(old_mask1_))] = 0
 
         # new=np.zeros((old.shape[0],old.shape[1],3),dtype=np.uint8)
         # new[np.where(old==0)]=new_rgb[0]

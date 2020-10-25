@@ -119,7 +119,7 @@ def pred2gray_bytensor(pred): # pred: tensor:bs*n_class*h*w
     # gray=torch.from_numpy(gray)
     return gray
 
-def gray2rgb(gray,n_class=5,label_list=[[239,238,236],[255,242,175],[170,218,255],[208,236,208],[255,255,255]]): # gray: np:h*w
+def gray2rgb(gray,n_class=5,label_list=[[239,238,236],[255,255,255],[170,218,255],[208,236,208],[255,255,255]]): # gray: np:h*w
     h,w=gray.shape
     mask=[]
     rgb=np.zeros((h,w,3))

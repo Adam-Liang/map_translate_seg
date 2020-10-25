@@ -1,4 +1,4 @@
-""" 
+"""
 Ported to pytorch thanks to [tstandley](https://github.com/tstandley/Xception-PyTorch)
 @author: tstandley
 Adapted by cadene
@@ -30,8 +30,7 @@ __all__ = ['xception']
 # pre-trained model
 # https://data.lip6.fr/cadene/pretrainedmodels/
 model_urls = {
-    'xception': osp.join(os.path.split(os.path.split(os.path.dirname(__file__))[0])[0], 'xception_pytorch_imagenet.pth')
-    # 'xception': osp.join(os.getcwd(), 'xception_pytorch_imagenet.pth')
+    'xception': osp.join(os.getcwd(), 'xception_pytorch_imagenet.pth')
     # 'xception': osp.join(osp.expanduser('~'), '.cache/torch/checkpoints/xception_pytorch_imagenet.pth')
     # 'http://data.lip6.fr/cadene/pretrainedmodels/xception-b5690688.pth'
 }
@@ -118,11 +117,14 @@ class Xception(nn.Module):
     https://arxiv.org/pdf/1610.02357.pdf
     """
 
-    def __init__(self, os):
+    def __init__(self, os, parms_ratio=None):
         """ Constructor
         Args:
             num_classes: number of classes
         """
+        def more_parm(channel):
+            return int(channel*(parms_ratio**0.5))
+
         super(Xception, self).__init__()
 
         stride_list = None
@@ -132,51 +134,51 @@ class Xception(nn.Module):
             stride_list = [2, 2, 1]
         else:
             raise ValueError('xception.py: output stride=%d is not supported.' % os)
-        self.conv1 = nn.Conv2d(3, 32, 3, 2, 1, bias=False)  # stride = 2
-        self.bn1 = SynchronizedBatchNorm2d(32, momentum=bn_mom)
+        self.conv1 = nn.Conv2d(3, more_parm(32), 3, 2, 1, bias=False)  # stride = 2
+        self.bn1 = SynchronizedBatchNorm2d(more_parm(32), momentum=bn_mom)
         self.relu = nn.ReLU(inplace=True)
 
-        self.conv2 = nn.Conv2d(32, 64, 3, 1, 1, bias=False)
-        self.bn2 = SynchronizedBatchNorm2d(64, momentum=bn_mom)
+        self.conv2 = nn.Conv2d(more_parm(32), more_parm(64), 3, 1, 1, bias=False)
+        self.bn2 = SynchronizedBatchNorm2d(more_parm(64), momentum=bn_mom)
         # do relu here
 
-        self.block1 = Block(64, 128, 2)
-        self.block2 = Block(128, 256, stride_list[0], inplace=False)  # stride = 4
-        self.block3 = Block(256, 728, stride_list[1])  # stride = 8
+        self.block1 = Block(more_parm(64), more_parm(128), 2)
+        self.block2 = Block(more_parm(128), more_parm(256), stride_list[0], inplace=False)  # stride = 4
+        self.block3 = Block(more_parm(256), more_parm(728), stride_list[1])  # stride = 8
 
         # middle flow
         rate = 16 // os
-        self.block4 = Block(728, 728, 1, atrous=rate) #atrous 控制卷积核膨胀情况
-        self.block5 = Block(728, 728, 1, atrous=rate)
-        self.block6 = Block(728, 728, 1, atrous=rate)
-        self.block7 = Block(728, 728, 1, atrous=rate)
+        self.block4 = Block(more_parm(728), more_parm(728), 1, atrous=rate) #atrous 控制卷积核膨胀情况
+        self.block5 = Block(more_parm(728), more_parm(728), 1, atrous=rate)
+        self.block6 = Block(more_parm(728), more_parm(728), 1, atrous=rate)
+        self.block7 = Block(more_parm(728), more_parm(728), 1, atrous=rate)
 
-        self.block8 = Block(728, 728, 1, atrous=rate)
-        self.block9 = Block(728, 728, 1, atrous=rate)
-        self.block10 = Block(728, 728, 1, atrous=rate)
-        self.block11 = Block(728, 728, 1, atrous=rate)
+        self.block8 = Block(more_parm(728), more_parm(728), 1, atrous=rate)
+        self.block9 = Block(more_parm(728), more_parm(728), 1, atrous=rate)
+        self.block10 = Block(more_parm(728), more_parm(728), 1, atrous=rate)
+        self.block11 = Block(more_parm(728), more_parm(728), 1, atrous=rate)
 
-        self.block12 = Block(728, 728, 1, atrous=rate)
-        self.block13 = Block(728, 728, 1, atrous=rate)
-        self.block14 = Block(728, 728, 1, atrous=rate)
-        self.block15 = Block(728, 728, 1, atrous=rate)
+        self.block12 = Block(more_parm(728), more_parm(728), 1, atrous=rate)
+        self.block13 = Block(more_parm(728), more_parm(728), 1, atrous=rate)
+        self.block14 = Block(more_parm(728), more_parm(728), 1, atrous=rate)
+        self.block15 = Block(more_parm(728), more_parm(728), 1, atrous=rate)
 
-        self.block16 = Block(728, 728, 1, atrous=[1 * rate, 1 * rate, 1 * rate])
-        self.block17 = Block(728, 728, 1, atrous=[1 * rate, 1 * rate, 1 * rate])
-        self.block18 = Block(728, 728, 1, atrous=[1 * rate, 1 * rate, 1 * rate])
-        self.block19 = Block(728, 728, 1, atrous=[1 * rate, 1 * rate, 1 * rate])
+        self.block16 = Block(more_parm(728), more_parm(728), 1, atrous=[1 * rate, 1 * rate, 1 * rate])
+        self.block17 = Block(more_parm(728), more_parm(728), 1, atrous=[1 * rate, 1 * rate, 1 * rate])
+        self.block18 = Block(more_parm(728), more_parm(728), 1, atrous=[1 * rate, 1 * rate, 1 * rate])
+        self.block19 = Block(more_parm(728), more_parm(728), 1, atrous=[1 * rate, 1 * rate, 1 * rate])
 
-        self.block20 = Block(728, 1024, stride_list[2], atrous=rate, grow_first=False)
+        self.block20 = Block(more_parm(728), more_parm(1024), stride_list[2], atrous=rate, grow_first=False)
         # self.block12=Block(728,1024,2,2,start_with_relu=True,grow_first=False)
 
-        self.conv3 = SeparableConv2d(1024, 1536, 3, 1, 1 * rate, dilation=rate, activate_first=False)
+        self.conv3 = SeparableConv2d(more_parm(1024), more_parm(1536), 3, 1, 1 * rate, dilation=rate, activate_first=False)
         # self.bn3 = SynchronizedBatchNorm2d(1536, momentum=bn_mom)
 
-        self.conv4 = SeparableConv2d(1536, 1536, 3, 1, 1 * rate, dilation=rate, activate_first=False)
+        self.conv4 = SeparableConv2d(more_parm(1536), more_parm(1536), 3, 1, 1 * rate, dilation=rate, activate_first=False)
         # self.bn4 = SynchronizedBatchNorm2d(1536, momentum=bn_mom)
 
         # do relu here
-        self.conv5 = SeparableConv2d(1536, 2048, 3, 1, 1 * rate, dilation=rate, activate_first=False)
+        self.conv5 = SeparableConv2d(more_parm(1536), more_parm(2048), 3, 1, 1 * rate, dilation=rate, activate_first=False)
         # self.bn5 = SynchronizedBatchNorm2d(2048, momentum=bn_mom)
         self.layers = []
 
@@ -314,11 +316,11 @@ class Xception3strides(Xception):
         return self.layers
 
 
-def xception(pretrained=True, os=16, stride3=False):
+def xception(pretrained=True, os=16, stride3=False, parms_ratio=None):
     if os == 16 and stride3:
         model = Xception3strides(os=os)
     else:
-        model = Xception(os=os)
+        model = Xception(os=os,parms_ratio=parms_ratio)
     if pretrained:
         old_dict = torch.load(model_urls['xception'])
         # old_dict = model_zoo.load_url(model_urls['xception'])
@@ -331,7 +333,7 @@ def xception(pretrained=True, os=16, stride3=False):
         # old_dict['conv5.pointwise.weight'] = old_dict.pop('conv4.pointwise.weight')
         model_dict.update(old_dict)
 
-        model.load_state_dict(model_dict)
+        # model.load_state_dict(model_dict)
 
     return model
 

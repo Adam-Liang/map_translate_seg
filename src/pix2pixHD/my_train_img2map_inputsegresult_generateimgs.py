@@ -1,5 +1,3 @@
-__author__ = "charles"
-__email__ = "charleschen2013@163.com"
 import os
 from os import path as osp
 import sys

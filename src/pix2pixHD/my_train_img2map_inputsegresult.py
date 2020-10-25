@@ -85,7 +85,7 @@ def eval_fidiou(args, model_G,model_seg, data_loader):
         batch_size = inputs.size(0)
         im_name = sample['A_paths']
         for b in range(batch_size):
-            file_name = osp.split(im_name[b])[0].split(os.sep)[-1]+osp.split(im_name[b])[-1].split('.')[0]
+            file_name = osp.split(im_name[b])[0].split(os.sep)[-2]+'_'+osp.split(im_name[b])[0].split(os.sep)[-1]+'_'+osp.split(im_name[b])[-1].split('.')[0]
             real_file = osp.join(real_dir, f'{file_name}.tif')
             real_seg_file = osp.join(real_seg_dir, f'{file_name}.tif')
             A_file = osp.join(A_dir, f'{file_name}.tif')
@@ -208,8 +208,8 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
         print('got final models')
         fid,iou = eval_fidiou(args,model_G=G, model_seg=DLV3P,data_loader=get_pix2pix_maps_dataloader(args, train=False))
         logger.log(key='iou', data=iou)
-        if fid < logger.get_max(key='FID'):
-            model_saver.save(f'DLV3P_{fid:.4f}', DLV3P)
+        # if fid < logger.get_max(key='FID'):
+        #     model_saver.save(f'DLV3P_{fid:.4f}', DLV3P)
         sw.add_scalar('eval/iou', iou, epoch_now)
         sw.add_scalar('eval/fid', fid, epoch_now)
 

@@ -7,7 +7,8 @@ import numpy as np
 
 '''该脚本将GAN生成的rgb图根据预设色值按照最近邻关系转换为标准色值'''
 
-stand_rgb =[[239,238,236],[255,255,255],[170,218,255],[227,227,227]]
+# stand_rgb =[[239,238,236],[255,255,255],[170,218,255],[227,227,227]]
+stand_rgb =[[239,238,236],[255,255,255],[170,218,255]]
 
 
 IMG_EXTENSIONS = [
@@ -80,7 +81,7 @@ def make_stand_img(dir_old, dir_new):
         new_img[np.where(new == 0)] = stand_rgb[0]
         new_img[np.where(new == 1)] = stand_rgb[1]
         new_img[np.where(new == 2)] = stand_rgb[2]
-        new_img[np.where(new == 3)] = stand_rgb[3]
+        # new_img[np.where(new == 3)] = stand_rgb[3]
 
         if False: # 双边滤波
             new_img=cv2.bilateralFilter(new_img,7,30,30)
@@ -94,7 +95,7 @@ def make_stand_img(dir_old, dir_new):
 if __name__ == "__main__":
     flag = 1
     # 首先解析文件路径
-    path_old = r'D:\map_translate\写作相关\latex内容\latex内容\配图\素材\131967335'
+    path_old = r'D:\map_translate\看看效果\HN14_log_9.1.2_seed32768_jointDL1_connect_featuremap_roadx1.0\fake_result'
     # path_new = r"D:\map_translate\看看效果\0426TW16_1708图_celvs,epoch200\real_seg_new"
     path_new = path_old + '_tostand'
 

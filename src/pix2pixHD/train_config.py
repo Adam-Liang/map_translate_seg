@@ -34,6 +34,11 @@ def config():
     parser = argparse.ArgumentParser(description='Trains GAN on CIFAR',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     # 后续试验新增控制参数
+    parser.add_argument('--_val_frequency', type=int, default=10, help='how many epochs to eval.')
+
+    parser.add_argument('--_1002arg_GANloss_alpha', type=float, default=1.0, help='GANloss_alpha.')
+    parser.add_argument('--_1002arg_segloss_alpha', type=float, default=1.0, help='segloss_alpha.')
+
     parser.add_argument('--_0701arg_gradloss_L1_alpha', type=float, default=10, help='gardloss_alpha.')
     parser.add_argument('--_0701arg_gradloss_struct_alpha', type=float, default=1, help='gardloss_alpha.')
 

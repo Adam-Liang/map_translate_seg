@@ -8,28 +8,19 @@ sys.path.append(osp.join(sys.path[0], '../../'))
 # sys.path.append(osp.join(sys.path[0], '../../../'))
 import time
 import torch
-import torch.nn as nn
 from src.utils.train_utils import model_accelerate, get_device, mean, get_lr
 from src.pix2pixHD.train_config import config
-from src.pix2pixHD.networks import get_G, get_D, get_E
-from torch.optim import Adam
-from src.pix2pixHD.hinge_lr_scheduler import get_hinge_scheduler
 from src.utils.logger import ModelSaver, Logger
 from src.datasets import get_pix2pix_maps_dataloader
-from src.pix2pixHD.utils import get_edges, label_to_one_hot, get_encode_features
-from src.utils.visualizer import Visualizer
 from tqdm import tqdm
-from torchvision import transforms
-from src.pix2pixHD.criterion import get_GANLoss, get_VGGLoss, get_DFLoss, get_low_level_loss
 from tensorboardX import SummaryWriter
 from src.pix2pixHD.utils import from_std_tensor_save_image, create_dir
-from src.data.image_folder import make_dataset
 import shutil
 import numpy as np
 from PIL import Image
 
 from src.pix2pixHD.deeplabv3plus.deeplabv3plus import Configuration
-from src.pix2pixHD.deeplabv3plus.deeplabv3plus.my_deeplabv3plus_upsample2conv import deeplabv3plus
+from src.pix2pixHD.deeplabv3plus.deeplabv3plus.my_deeplabv3plus_featuremap import deeplabv3plus
 import torch.nn.functional as F
 
 from src.pix2pixHD.deeplabv3plus.lovasz_losses import lovasz_softmax
@@ -41,12 +32,10 @@ from src.pix2pixHD.deeplabv3plus.focal_loss import FocalLoss
 from evaluation.fid.fid_score import fid_score
 import json
 
-def eval_fidiou(args, model_G,model_seg, data_loader):
+def eval_iou(args,model_seg, data_loader):
     device = get_device(args)
     data_loader = tqdm(data_loader)
-    model_G.eval()
     model_seg.eval()
-    model_G = model_G.to(device)
     model_seg = model_seg.to(device)
 
     label_preds = []
@@ -56,12 +45,10 @@ def eval_fidiou(args, model_G,model_seg, data_loader):
     real_dir = osp.join(args.save, 'real_result')
     A_dir = osp.join(args.save, 'real_source')
     seg_dir = osp.join(args.save, 'seg_result')
-    fake_dir=osp.join(args.save, 'fake_result')
     create_dir(real_dir)
     create_dir(real_seg_dir)
     create_dir(A_dir)
     create_dir(seg_dir)
-    create_dir(fake_dir)
 
     for i, sample in enumerate(data_loader):
         inputs, labels = sample['A_seg'], sample['seg'].squeeze(dim=1)
@@ -78,23 +65,19 @@ def eval_fidiou(args, model_G,model_seg, data_loader):
         label_preds.append(pred)
         label_targets.append(target)
 
-        seg_ret = pred2gray(outputs).unsqueeze(1).type(torch.FloatTensor).to(device)  # bs*1*h*w
-        imgs_plus=torch.cat((imgs,seg_ret),1)
-        fakes = model_G(imgs_plus).detach()
+
 
         batch_size = inputs.size(0)
         im_name = sample['A_paths']
         for b in range(batch_size):
-            file_name = osp.split(im_name[b])[-1].split('.')[0]
+            file_name = osp.split(im_name[b])[0].split(os.sep)[-2]+'_'+osp.split(im_name[b])[0].split(os.sep)[-1]+'_'+osp.split(im_name[b])[-1].split('.')[0]
             real_file = osp.join(real_dir, f'{file_name}.tif')
             real_seg_file = osp.join(real_seg_dir, f'{file_name}.tif')
             A_file = osp.join(A_dir, f'{file_name}.tif')
             seg_file = osp.join(seg_dir, f'{file_name}.tif')
-            fake_file=osp.join(fake_dir, f'{file_name}.tif')
 
             from_std_tensor_save_image(filename=real_file, data=sample['B'][b].cpu())
             from_std_tensor_save_image(filename=A_file, data=sample['A'][b].cpu())
-            from_std_tensor_save_image(filename=fake_file, data=fakes[b].cpu())
             tmpimg= sample['seg'][b].data.cpu().numpy()
             tmpimg = gray2rgb(tmpimg)
             tmpimg=Image.fromarray(tmpimg)
@@ -104,16 +87,13 @@ def eval_fidiou(args, model_G,model_seg, data_loader):
             tmpimg = Image.fromarray(tmpimg)
             tmpimg.save(fp=seg_file)
 
-    fid = fid_score(real_path=real_dir, fake_path=fake_dir, gpu=str(args.gpu))
-    print(f'===> fid score:{fid:.4f}')
     iou=None
     from src.pix2pixHD.eval_iou import label_accuracy_score
     _,_,iou,_,_=label_accuracy_score(label_targets, label_preds, n_class)
     print(f'===> iou score:{iou:.4f}')
 
     model_seg.train()
-    model_G.train()
-    return fid,iou
+    return iou
 
 def label_nums(data_loader,label_num=5): # 遍历dataloader，计算其所有图像中分割GT各label的pix总数
     ret=[]
@@ -141,50 +121,33 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
 
     sw = SummaryWriter(args.tensorboard_path)
 
-    G = get_G(args,input_nc=4) # 3+1，带上分割网络的预测值
-    D = get_D(args)
-    model_saver.load('G', G)
-    model_saver.load('D', D)
-
     cfg=Configuration()
     cfg.MODEL_NUM_CLASSES=args.label_nc
     DLV3P=deeplabv3plus(cfg)
     if args.gpu:
         # DLV3P=nn.DataParallel(DLV3P)
         DLV3P=DLV3P.cuda()
-    model_saver.load('DLV3P', DLV3P)
 
-    G_optimizer = Adam(G.parameters(), lr=args.G_lr, betas=(args.beta1, 0.999))
-    D_optimizer = Adam(D.parameters(), lr=args.D_lr, betas=(args.beta1, 0.999))
+    params = sum([param.nelement() for param in DLV3P.parameters()])
+    print(f"{params}")
+    # sys.exit(0)  # 测完退出
+
+    model_saver.load('DLV3P', DLV3P)
 
     seg_global_params, seg_backbone_params=DLV3P.get_paras()
     DLV3P_global_optimizer = torch.optim.Adam([{'params': seg_global_params, 'initial_lr': args.seg_lr_global}], lr=args.seg_lr_global,betas=(args.beta1, 0.999))
     DLV3P_backbone_optimizer = torch.optim.Adam([{'params': seg_backbone_params, 'initial_lr': args.seg_lr_backbone}], lr=args.seg_lr_backbone, betas=(args.beta1, 0.999))
 
-    model_saver.load('G_optimizer', G_optimizer)
-    model_saver.load('D_optimizer', D_optimizer)
     model_saver.load('DLV3P_global_optimizer', DLV3P_global_optimizer)
     model_saver.load('DLV3P_backbone_optimizer', DLV3P_backbone_optimizer)
 
-    G_scheduler = get_hinge_scheduler(args, G_optimizer)
-    D_scheduler = get_hinge_scheduler(args, D_optimizer)
     DLV3P_global_scheduler=torch.optim.lr_scheduler.LambdaLR(DLV3P_global_optimizer, lr_lambda=lambda epoch:(1 - epoch/args.epochs)**0.9,last_epoch=epoch_now)
     DLV3P_backbone_scheduler = torch.optim.lr_scheduler.LambdaLR(DLV3P_backbone_optimizer,lr_lambda=lambda epoch: (1 - epoch / args.epochs) ** 0.9,last_epoch=epoch_now)
 
-    model_saver.load('G_scheduler', G_scheduler)
-    model_saver.load('D_scheduler', D_scheduler)
     model_saver.load('DLV3P_global_scheduler', DLV3P_global_scheduler)
     model_saver.load('DLV3P_backbone_scheduler', DLV3P_backbone_scheduler)
 
     device = get_device(args)
-
-    GANLoss = get_GANLoss(args)
-    if args.use_ganFeat_loss:
-        DFLoss = get_DFLoss(args)
-    if args.use_vgg_loss:
-        VGGLoss = get_VGGLoss(args)
-    if args.use_low_level_loss:
-        LLLoss = get_low_level_loss(args)
 
     # CE_loss=nn.CrossEntropyLoss(ignore_index=255)
     LVS_loss = lovasz_softmax
@@ -205,15 +168,14 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
 
 
     if epoch_now==args.epochs:
-        iou = eval_fidiou(args,model_G=G, model_seg=DLV3P,data_loader=get_pix2pix_maps_dataloader(args, train=False))
+        print('get final models')
+        iou = eval_iou(args, model_seg=DLV3P,data_loader=get_pix2pix_maps_dataloader(args, train=False))
         logger.log(key='iou', data=iou)
-        if iou < logger.get_max(key='FID'):
-            model_saver.save(f'DLV3P_{iou:.4f}', DLV3P)
+        # if iou < logger.get_max(key='iou'):
+        #     model_saver.save(f'DLV3P_{iou:.4f}', DLV3P)
         sw.add_scalar('eval/iou', iou, epoch_now)
 
     for epoch in range(epoch_now, args.epochs):
-        G_loss_list = []
-        D_loss_list = []
         # CE_loss_list = []
         LVS_loss_list=[]
         FOCAL_loss_list=[]
@@ -253,78 +215,12 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
             DLV3P_global_optimizer.step()  # (perform optimization step)
             DLV3P_backbone_optimizer.step()
 
-            # 然后训练GAN
-            imgs = sample['A'].to(device)
-            maps = sample['B'].to(device)
-            seg_ret = pred2gray(outputs).unsqueeze(1).type(torch.FloatTensor).to(device) #bs*1*h*w
-            imgs_plus=torch.cat((imgs,seg_ret),1) # bs*4*h*w
 
-            # train the Discriminator
-            D_optimizer.zero_grad()
-            reals_maps = torch.cat([imgs.float(), maps.float()], dim=1)
 
-            fakes = G(imgs_plus).detach()
-            fakes_maps = torch.cat([imgs.float(), fakes.float()], dim=1)
-
-            D_real_outs = D(reals_maps)
-            D_real_loss = GANLoss(D_real_outs, True)
-
-            D_fake_outs = D(fakes_maps)
-            D_fake_loss = GANLoss(D_fake_outs, False)
-
-            D_loss = 0.5 * (D_real_loss + D_fake_loss)
-            D_loss = D_loss.mean()
-            D_loss.backward()
-            D_loss = D_loss.item()
-            D_optimizer.step()
-
-            # train generator and encoder
-            G_optimizer.zero_grad()
-            fakes = G(imgs_plus)
-            fakes_maps = torch.cat([imgs.float(), fakes.float()], dim=1)
-            D_fake_outs = D(fakes_maps)
-
-            gan_loss = GANLoss(D_fake_outs, True)
-
-            G_loss = 0
-            G_loss += gan_loss
-            gan_loss = gan_loss.mean().item()
-
-            if args.use_vgg_loss:
-                vgg_loss = VGGLoss(fakes, imgs)
-                G_loss += args.lambda_feat * vgg_loss
-                vgg_loss = vgg_loss.mean().item()
-            else:
-                vgg_loss = 0.
-
-            if args.use_ganFeat_loss:
-                df_loss = DFLoss(D_fake_outs, D_real_outs)
-                G_loss += args.lambda_feat * df_loss
-                df_loss = df_loss.mean().item()
-            else:
-                df_loss = 0.
-
-            if args.use_low_level_loss:
-                ll_loss = LLLoss(fakes, maps)
-                G_loss += args.lambda_feat * ll_loss
-                ll_loss = ll_loss.mean().item()
-            else:
-                ll_loss = 0.
-
-            G_loss = G_loss.mean()
-            G_loss.backward()
-            G_loss = G_loss.item()
-
-            G_optimizer.step()
-
-            data_loader.write(f'Epochs:{epoch}  | Dloss:{D_loss:.6f} | Gloss:{G_loss:.6f}'
-                              f'| GANloss:{gan_loss:.6f} | VGGloss:{vgg_loss:.6f} | DFloss:{df_loss:.6f} '
-                              f'| LLloss:{ll_loss:.6f} | lr_gan:{get_lr(G_optimizer):.8f}'
-                              f'| FOCAL_loss:{focal_loss_value:.6f}|LVS_loss:{lvs_loss_value:.6f} '
+            data_loader.write(f'Epochs:{epoch} | FOCAL_loss:{focal_loss_value:.6f}|LVS_loss:{lvs_loss_value:.6f} '
                               f'| lr_global:{get_lr(DLV3P_global_optimizer):.8f}| lr_backbone:{get_lr(DLV3P_backbone_optimizer):.8f}')
 
-            G_loss_list.append(G_loss)
-            D_loss_list.append(D_loss)
+
             # CE_loss_list.append(ce_loss_value)
             LVS_loss_list.append(lvs_loss_value)
             FOCAL_loss_list.append(focal_loss_value)
@@ -332,23 +228,13 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
             # tensorboard log
             if args.tensorboard_log and step % args.tensorboard_log == 0:  # defalut is 5
                 total_steps = epoch * len(data_loader) + step
-                sw.add_scalar('Loss/G', G_loss, total_steps)
-                sw.add_scalar('Loss/D', D_loss, total_steps)
-                sw.add_scalar('Loss/gan', gan_loss, total_steps)
-                sw.add_scalar('Loss/vgg', vgg_loss, total_steps)
-                sw.add_scalar('Loss/df', df_loss, total_steps)
-                sw.add_scalar('Loss/ll', ll_loss, total_steps)
+                sw.add_scalar('Loss1/seg', seg_loss, total_steps)
                 # sw.add_scalar('Loss/CE', ce_loss_value, total_steps)
                 sw.add_scalar('Loss/LVS', lvs_loss_value, total_steps)
                 sw.add_scalar('Loss/focal', focal_loss_value, total_steps)
-                sw.add_scalar('LR/G', get_lr(G_optimizer), total_steps)
-                sw.add_scalar('LR/D', get_lr(D_optimizer), total_steps)
                 sw.add_scalar('LR/global_seg', get_lr(DLV3P_global_optimizer), total_steps)
                 sw.add_scalar('LR/backbone_seg', get_lr(DLV3P_backbone_optimizer), total_steps)
 
-                sw.add_image('img2/realA', tensor2im(imgs.data), total_steps, dataformats='HWC')
-                sw.add_image('img2/fakeB', tensor2im(fakes.data), total_steps, dataformats='HWC')
-                sw.add_image('img2/realB', tensor2im(maps.data), total_steps, dataformats='HWC')
                 tmpsegmap = pred2gray(outputs)
                 tmpsegmap = tmpsegmap[0].data.numpy()
                 tmpsegmap = gray2rgb(tmpsegmap)
@@ -357,43 +243,31 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
                 tmpsegmap = gray2rgb(tmpsegmap)
                 sw.add_image('img2/real_segB', tmpsegmap, total_steps, dataformats='HWC')
 
-        D_scheduler.step(epoch)
-        G_scheduler.step(epoch)
         DLV3P_global_scheduler.step()
         DLV3P_backbone_scheduler.step()
-        if epoch % 10 == 0 or epoch == (args.epochs-1):
+        if epoch % args._val_frequency == 0 or epoch == (args.epochs-1):
             import copy
             args2=copy.deepcopy(args)
             args2.batch_size=args.batch_size_eval
-            fid,iou = eval_fidiou(args,model_G=G, model_seg=DLV3P,data_loader=get_pix2pix_maps_dataloader(args2, train=False))
-            logger.log(key='FID', data=fid)
+            iou = eval_iou(args, model_seg=DLV3P,data_loader=get_pix2pix_maps_dataloader(args2, train=False))
             logger.log(key='iou', data=iou)
             # if fid < logger.get_max(key='FID'):
             #     model_saver.save(f'G_{fid:.4f}', G)
             #     model_saver.save(f'D_{fid:.4f}', D)
             #     model_saver.save(f'DLV3P_{iou:.4f}', DLV3P)
-            sw.add_scalar('eval/fid', fid, epoch)
             sw.add_scalar('eval/iou', iou, epoch)
 
-        logger.log(key='D_loss', data=sum(D_loss_list) / float(len(D_loss_list)))
-        logger.log(key='G_loss', data=sum(G_loss_list) / float(len(G_loss_list)))
         # logger.log(key='CE_loss', data=sum(CE_loss_list) / float(len(CE_loss_list)))
         logger.log(key='LVS_loss', data=sum(LVS_loss_list) / float(len(LVS_loss_list)))
         logger.log(key='FOCAL_loss', data=sum(FOCAL_loss_list) / float(len(FOCAL_loss_list)))
         logger.save_log()
         # logger.visualize()
 
-        model_saver.save('G', G)
-        model_saver.save('D', D)
         model_saver.save('DLV3P', DLV3P)
 
-        model_saver.save('G_optimizer', G_optimizer)
-        model_saver.save('D_optimizer', D_optimizer)
         model_saver.save('DLV3P_global_optimizer', DLV3P_global_optimizer)
         model_saver.save('DLV3P_backbone_optimizer', DLV3P_backbone_optimizer)
 
-        model_saver.save('G_scheduler', G_scheduler)
-        model_saver.save('D_scheduler', D_scheduler)
         model_saver.save('DLV3P_global_scheduler', DLV3P_global_scheduler)
         model_saver.save('DLV3P_backbone_scheduler', DLV3P_backbone_scheduler)
 

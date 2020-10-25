@@ -1,5 +1,3 @@
-__author__ = "charles"
-__email__ = "charleschen2013@163.com"
 import os
 from os import path as osp
 import sys
@@ -88,7 +86,7 @@ def eval_fidiou(args, model_G,model_seg, data_loader):
         batch_size = inputs.size(0)
         im_name = sample['A_paths']
         for b in range(batch_size):
-            file_name = osp.split(im_name[b])[0].split(os.sep)[-1]+osp.split(im_name[b])[-1].split('.')[0]
+            file_name = osp.split(im_name[b])[0].split(os.sep)[-2]+'_'+osp.split(im_name[b])[0].split(os.sep)[-1]+'_'+osp.split(im_name[b])[-1].split('.')[0]
             real_file = osp.join(real_dir, f'{file_name}.tif')
             real_seg_file = osp.join(real_seg_dir, f'{file_name}.tif')
             A_file = osp.join(A_dir, f'{file_name}.tif')
@@ -211,8 +209,8 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
         print('get final models')
         iou = eval_fidiou(args,model_G=G, model_seg=DLV3P,data_loader=get_pix2pix_maps_dataloader(args, train=False))
         logger.log(key='iou', data=iou)
-        if iou < logger.get_max(key='FID'):
-            model_saver.save(f'DLV3P_{iou:.4f}', DLV3P)
+        # if iou < logger.get_max(key='FID'):
+        #     model_saver.save(f'DLV3P_{iou:.4f}', DLV3P)
         sw.add_scalar('eval/iou', iou, epoch_now)
 
     for epoch in range(epoch_now, args.epochs):
@@ -316,7 +314,7 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
                 ll_loss = 0.
 
             G_loss = G_loss.mean()
-            G_seg_loss =G_loss+seg_loss
+            G_seg_loss =args._1002arg_GANloss_alpha*G_loss+args._1002arg_segloss_alpha*seg_loss
             G_loss = G_loss.item()
             seg_loss=seg_loss.item()
 
@@ -375,7 +373,7 @@ def train(args, get_dataloader_func=get_pix2pix_maps_dataloader):
         G_scheduler.step(epoch)
         DLV3P_global_scheduler.step()
         DLV3P_backbone_scheduler.step()
-        if epoch % 10 == 0 or epoch == (args.epochs-1):
+        if epoch % args._val_frequency == 0 or epoch == (args.epochs-1):
             import copy
             args2=copy.deepcopy(args)
             args2.batch_size=args.batch_size_eval

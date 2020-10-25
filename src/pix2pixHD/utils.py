@@ -46,7 +46,7 @@ def label_to_one_hot(targets: torch.Tensor, n_class: int, with_255: bool = False
 
 def create_dir(dir_path):
     if not osp.exists(dir_path):
-        os.mkdir(dir_path)
+        os.makedirs(dir_path)
 
 
 def from_std_tensor_save_image(filename, data, std=[0.5, 0.5, 0.5], mean=[0.5, 0.5, 0.5]): # 三通道为图像预测值(c*h*w)，而一通道为已经转换为0-255的图像
